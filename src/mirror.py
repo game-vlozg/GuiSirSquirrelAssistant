@@ -17,13 +17,13 @@ class Mirror:
         floor = ""
         if common.element_exist('pictures/mirror/packs/floor1.png',0.9):
             floor = "f1"
-        if common.element_exist('pictures/mirror/packs/floor2.png',0.9):
+        elif common.element_exist('pictures/mirror/packs/floor2.png',0.9):
             floor = "f2"
-        if common.element_exist('pictures/mirror/packs/floor3.png',0.9):
+        elif common.element_exist('pictures/mirror/packs/floor3.png',0.9):
             floor = "f3"
-        if common.element_exist('pictures/mirror/packs/floor4.png',0.9):
+        elif common.element_exist('pictures/mirror/packs/floor4.png',0.9):
             floor = "f4"
-        if common.element_exist('pictures/mirror/packs/floor5.png',0.9):
+        elif common.element_exist('pictures/mirror/packs/floor5.png',0.9):
             floor = "f5"
         return floor
         
@@ -75,6 +75,7 @@ class Mirror:
             self.gift_selection()
     
     def check_run(self):
+        """Checks if the run resulted in a loss or win"""
         run_complete = 0
         win_flag = 0
         if common.element_exist("pictures/general/defeat.png"):
@@ -90,6 +91,7 @@ class Mirror:
         return win_flag,run_complete
 
     def mirror_loop(self):
+        """Handles all the mirror dungeon logic in this"""
         if common.element_exist("pictures/events/skip.png"): #if hitting the events click skip to determine which is it
             self.logger.info("Entered ? node")
             common.mouse_move(200,200)
@@ -138,6 +140,7 @@ class Mirror:
         return self.check_run()
 
     def grace_of_stars(self):
+        """Selects grace of stars blessings for the runs"""
         self.logger.info("Selecting Grace")
         graces = [(925,890),(1300,890),(1300,445),(1675,445),(550,445)] #Levels, Stats Up, Theme Packs, Cost+Gift, Generalist Gift
         for x,y in graces:
@@ -239,7 +242,10 @@ class Mirror:
         refresh_flag = common.luminence(x,y) < 70 
         
         #TESTING 0.8 on Statuses
-        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
+            self.choose_pack('pictures/mirror/packs/f4/miracle.png')
+    
+        elif self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.debug("PACKS: pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
             common.mouse_move(200,200)
@@ -413,6 +419,7 @@ class Mirror:
                     break
 
     def sell_gifts(self):
+        """Handles Selling gifts"""
         for _ in range(3):
             common.sleep(1)
             if common.element_exist("pictures/mirror/restshop/market/vestige_2.png"):
@@ -668,6 +675,7 @@ class Mirror:
             common.click_matching("pictures/events/level_up.png")
             common.wait_skip("pictures/events/proceed.png")
             skill_check()
+            return
 
         if common.element_exist("pictures/events/select_gain.png"): #Select to gain EGO Gift
             self.logger.debug("Select to gain EGO Gift")
@@ -685,18 +693,21 @@ class Mirror:
             if common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
                 #common.click_matching("pictures/general/confirm_b.png")
                 common.key_press("enter")
+            return
 
         if common.element_exist("pictures/events/gain_check.png"): #Pass to gain an EGO Gift
             self.logger.debug("Pass to gain EGO Gift")
             common.click_matching("pictures/events/gain_check.png")
             common.wait_skip("pictures/events/proceed.png")
             skill_check()
+            return
 
-        if common.element_exist("pictures/events/gain_check_o.png"):
+        if common.element_exist("pictures/events/gain_check_o.png"): #Pass to gain an EGO Gift
             self.logger.debug("Pass to gain EGO Gift")
             common.click_matching("pictures/events/gain_check_o.png")
             common.wait_skip("pictures/events/proceed.png")
             skill_check()
+            return
 
         if common.element_exist("pictures/events/gain_gift.png"): #Proceed to gain
             self.logger.debug("Proceed to gain EGO Gift")
@@ -705,17 +716,29 @@ class Mirror:
             if common.element_exist("pictures/events/skip.png"):
                 common.click_skip(4)
                 self.event_choice()
+            return
 
         if common.element_exist("pictures/events/win_battle.png"): #Win battle to gain
             self.logger.debug("Win battle to gain EGO Gift")
             common.click_matching("pictures/events/win_battle.png")
             common.wait_skip("pictures/events/commence_battle.png")
-
-        self.special_events()
-        battle_check() #Just incase your pc has a very weird occurence of messing up
-
+            return
+        
         if common.element_exist("pictures/events/skill_check.png"):
             skill_check()
+            return
+
+        self.special_events()
+        #battle_check() #Just incase your pc has a very weird occurence of messing up
+
+        if common.element_exist("pictures/events/proceed.png"):
+            common.click_matching("pictures/events/proceed.png")
+            return
+
+        if common.element_exist("pictures/events/continue.png"):
+            common.click_matching("pictures/events/continue.png")
+            return
+
 
     def special_events(self):
         if common.element_exist("pictures/mirror/events/kqe.png"):
@@ -723,8 +746,8 @@ class Mirror:
             common.click_matching("pictures/mirror/events/kqe.png")
             common.wait_skip("pictures/events/continue.png")
             if common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
-                #common.click_matching("pictures/general/confirm_b.png")
-                common.key_press("enter") 
+                common.click_matching("pictures/general/confirm_b.png")
+                #common.key_press("enter") 
 
     def victory(self):
         self.logger.info("Run Won")
