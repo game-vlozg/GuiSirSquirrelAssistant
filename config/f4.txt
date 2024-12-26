@@ -1,5 +1,4 @@
 pictures/mirror/packs/f4/gluttony.png
-pictures/mirror/packs/f4/lust.png
 pictures/mirror/packs/f4/gloom.png
 pictures/mirror/packs/f4/miracle.png
 pictures/mirror/packs/f4/envy.png
@@ -8,4 +7,6 @@ pictures/mirror/packs/f4/tearful.png
 pictures/mirror/packs/f4/time.png
 pictures/mirror/packs/f4/pride.png
 pictures/mirror/packs/f4/yield.png
+pictures/mirror/packs/f4/world.png
 pictures/mirror/packs/f4/sloth.png
+pictures/mirror/packs/f4/lust.png

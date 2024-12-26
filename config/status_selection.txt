@@ -5,3 +5,6 @@ burn
 rupture
 tremor
 poise
+slash
+pierce
+blunt
