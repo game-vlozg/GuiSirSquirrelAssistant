@@ -37,8 +37,7 @@ def check_loading():
 def transition_loading():
     """Theres a load that occurs while transitioning to the next floor"""
     logger.info("Moving to Next Floor")
-    while(not common.element_exist("pictures/mirror/general/danteh.png")):
-        common.sleep(0.5)
+    common.sleep(5)
 
 def post_run_load():
     """There is some oddity in the loading time for this that makes it annoying to measure so this is a blanket wait for main menu stall"""

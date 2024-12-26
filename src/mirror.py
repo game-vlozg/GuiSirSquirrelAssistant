@@ -138,9 +138,6 @@ class Mirror:
         elif common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
             self.logger.info("EGO GIFT Prompt")
             common.click_matching("pictures/general/confirm_b.png") #might replace with enter
-        
-        elif common.element_exist("pictures/battle/winrate.png"):  #checks if in battle
-            battle()
 
         return self.check_run()
 
@@ -245,7 +242,7 @@ class Mirror:
         #TESTING 0.8 on Statuses
         #if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
         #    self.choose_pack('pictures/mirror/packs/f4/miracle.png')
-    
+
         if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
@@ -325,7 +322,7 @@ class Mirror:
         common.click_matching("pictures/squads/squad_select.png")
         while(not common.element_exist("pictures/battle/winrate.png")): #because squad select will always transition to battle
             common.sleep(0.5)
-        #check_loading()
+        battle()
 
     def reward_select(self):
         """Selecting EGO Gift rewards"""
@@ -380,6 +377,10 @@ class Mirror:
         if common.element_exist("pictures/mirror/general/nav_enter.png"):
             common.click_matching("pictures/mirror/general/nav_enter.png")
             #common.key_press("enter")
+        elif common.element_exist("pictures/mirror/general/boss_node.png"):
+            common.click_matching("pictures/mirror/general/boss_node.png")
+            if common.element_exist("pictures/mirror/general/nav_enter.png"):
+                common.click_matching("pictures/mirror/general/nav_enter.png")
         else:
         #Find which node is the traversable one
             node_location = []
@@ -403,7 +404,7 @@ class Mirror:
 
             for x,y in node_location:
                 common.mouse_move_click(x,y)
-                common.sleep(1)
+                common.sleep(0.5)
                 if common.element_exist("pictures/mirror/general/nav_enter.png"):
                     common.click_matching("pictures/mirror/general/nav_enter.png")
                     #common.key_press("enter")
@@ -620,47 +621,55 @@ class Mirror:
         common.click_matching("pictures/general/confirm_w.png")
         return
 
-    def upgrade(self,status,shift_x,shift_y):
-        gifts = common.match_image(status)
-        if len(gifts):
-            for x,y in gifts:
-                self.logger.debug(common.luminence(x+common.uniform_scale_single(shift_x),y+common.uniform_scale_single(shift_y)))
-                if common.luminence(x+common.uniform_scale_single(shift_x),y+common.uniform_scale_single(shift_y)) < 21: #19.66 is for upgraded and 14.33 is for greyed out so 20 should work for now
-                    continue
-                common.mouse_move_click(x,y)
-                for _ in range(2): #upgrading twice
-                    if common.element_exist("pictures/mirror/restshop/enhance/fully_upgraded.png"): #if fully upgraded skip this item
-                        break
-                    common.click_matching("pictures/mirror/restshop/enhance/power_up.png")
-                    if common.element_exist("pictures/mirror/restshop/enhance/more.png"): #If player has no more cost exit
-                        self.logger.info("Restshop: Not enough cost, exiting enhancement")
-                        common.click_matching("pictures/mirror/restshop/enhance/cancel.png")
-                        common.sleep(1)
-                        common.mouse_click()
-                        return
-                    elif common.element_exist("pictures/mirror/restshop/enhance/confirm.png"):
-                        self.logger.debug("Restshop: E.G.O status gift upgraded")
-                        common.click_matching("pictures/mirror/restshop/enhance/confirm.png")
+    def upgrade(self,gifts,status,shift_x,shift_y):
+        for x,y in gifts:
+            common.mouse_move_click(x,y)
+            for _ in range(2): #upgrading twice
+                if common.element_exist("pictures/mirror/restshop/enhance/fully_upgraded.png"): #if fully upgraded skip this item
+                    break
+                common.click_matching("pictures/mirror/restshop/enhance/power_up.png")
+                if common.element_exist("pictures/mirror/restshop/enhance/more.png"): #If player has no more cost exit
+                    self.logger.info("Restshop: Not enough cost, exiting enhancement")
+                    common.click_matching("pictures/mirror/restshop/enhance/cancel.png")
+                    common.sleep(1)
+                    common.mouse_click()
+                    return
+                elif common.element_exist("pictures/mirror/restshop/enhance/confirm.png"):
+                    self.logger.debug("Restshop: E.G.O status gift upgraded")
+                    common.click_matching("pictures/mirror/restshop/enhance/confirm.png")
 
     def enhance_gifts(self,status):
         """Enhancement gift process"""
-        for _ in range(3):
-            common.sleep(1)
+        while(True):
+            gifts = []
             if common.element_exist(status):
                 shift_x, shift_y = mirror_utils.enhance_shift(self.status) or (12, -41)
-                self.upgrade(status,shift_x,shift_y)
+                gifts = common.match_image(status)
+                gifts = [i for i in gifts if common.luminence(i[0]+common.uniform_scale_single(shift_x),i[1]+common.uniform_scale_single(shift_y)) > 21]
+                if len(gifts):
+                    self.upgrade(gifts,status,shift_x,shift_y)
+                self.logger.debug(gifts)
 
             if common.element_exist("pictures/mirror/restshop/enhance/wordless_enhance.png"):
                 shift_x, shift_y = mirror_utils.enhance_shift("wordless")
-                self.upgrade("pictures/mirror/restshop/enhance/wordless_enhance.png", shift_x, shift_y)
+                gifts = common.match_image("pictures/mirror/restshop/enhance/wordless_enhance.png")
+                gifts = [i for i in gifts if common.luminence(i[0]+common.uniform_scale_single(shift_x),i[1]+common.uniform_scale_single(shift_y)) > 21]
+                if len(gifts):
+                    self.upgrade(gifts,"pictures/mirror/restshop/enhance/wordless_enhance.png",shift_x,shift_y)
+                self.logger.debug(gifts)
 
             if common.element_exist("pictures/mirror/restshop/scroll_bar.png"):
                 common.click_matching("pictures/mirror/restshop/scroll_bar.png")
                 for k in range(5):
-                    common.mouse_scroll(-1000)  
+                    common.mouse_scroll(-1000)
+
+            if not gifts:
+                break
+            
 
     def event_choice(self):
         self.logger.info("Event")
+        common.sleep(1)
         if common.element_exist("pictures/events/level_up.png"):
             self.logger.info("Pass to Level Up")
             common.click_matching("pictures/events/level_up.png")
