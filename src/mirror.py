@@ -139,6 +139,9 @@ class Mirror:
             self.logger.info("EGO GIFT Prompt")
             common.click_matching("pictures/general/confirm_b.png") #might replace with enter
 
+        elif common.element_exist("pictures/battle/winrate.png"):
+            battle()
+
         return self.check_run()
 
     def grace_of_stars(self):
@@ -239,10 +242,10 @@ class Mirror:
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
         
-        #if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
-        #    self.choose_pack('pictures/mirror/packs/f4/miracle.png')
+        if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
+            self.choose_pack('pictures/mirror/packs/f4/miracle.png')
 
-        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        elif self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
             common.mouse_move(200,200)
@@ -481,6 +484,8 @@ class Mirror:
                 common.mouse_scroll(1000)
             common.sleep(0.5)
 
+        common.error_screenshot()
+        
         while(True):
             fusion_gifts = self.find_gifts(statuses)
             self.logger.debug("Initial Gifts")
