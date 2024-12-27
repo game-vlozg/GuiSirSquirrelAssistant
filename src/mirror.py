@@ -239,7 +239,6 @@ class Mirror:
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
         
-        #TESTING 0.8 on Statuses
         #if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
         #    self.choose_pack('pictures/mirror/packs/f4/miracle.png')
 
@@ -379,36 +378,48 @@ class Mirror:
             #common.key_press("enter")
         elif common.element_exist("pictures/mirror/general/boss_node.png"):
             common.click_matching("pictures/mirror/general/boss_node.png")
-            if common.element_exist("pictures/mirror/general/nav_enter.png"):
-                common.click_matching("pictures/mirror/general/nav_enter.png")
+            while (not common.element_exist("pictures/mirror/general/nav_enter.png")):
+                common.sleep(0.5)
+            common.click_matching("pictures/mirror/general/nav_enter.png")
         else:
         #Find which node is the traversable one
             node_location = []
-            node_y = [607,189,1036,820,396]
+            if self.aspect_ratio == "16:10": #Oddly the old coordinates work for 16:10 but 16:9/4:3 need new ones
+                node_y = [607,189,1036] #for 16/10
+            else:
+                node_y = [263,689,1115] #for 4/3 16/9
+
             for y in node_y:
                 if self.aspect_ratio == "4:3":
                     node_location.append((common.uniform_scale_single(1440),common.uniform_scale_single(y) + common.uniform_scale_single(105)))
                 else:
                     node_location.append((common.uniform_scale_single(1440),common.uniform_scale_single(y)))
+#           
+            if self.aspect_ratio == "16:9": #Drag because 16:9 blocks the top view of the cost
+                common.mouse_move(200,200)
+                if found := common.match_image("pictures/mirror/general/danteh.png"):
+                    x,y = found[0]
+                    common.mouse_move(x,y)
+                    common.mouse_drag(x,y+common.scale_y(100))
 
-            combat_nodes = common.node_detect()
+            combat_nodes = common.match_image("pictures/mirror/general/cost.png")
             self.logger.debug(combat_nodes) #Combat detected nodes
             combat_nodes = [x for x in combat_nodes if x[0] > common.scale_x(1280) and x[0] < common.scale_x(1601)]
             self.logger.debug(combat_nodes) #filter only for next nodes
-            combat_nodes_locs = common.proximity_check_fuse(node_location, combat_nodes,100, 100)
+            combat_nodes_locs = common.proximity_check_fuse(node_location, combat_nodes,100, common.scale_y(200))
             self.logger.debug(combat_nodes_locs)
             node_location = [i for i in node_location if i not in list(combat_nodes_locs)]
             self.logger.debug(node_location)
             node_location = node_location + list(combat_nodes_locs)
             self.logger.debug(node_location)
 
-            for x,y in node_location:
-                common.mouse_move_click(x,y)
-                common.sleep(0.5)
-                if common.element_exist("pictures/mirror/general/nav_enter.png"):
-                    common.click_matching("pictures/mirror/general/nav_enter.png")
-                    #common.key_press("enter")
-                    break
+            while(not common.element_exist("pictures/mirror/general/nav_enter.png")):
+                for x,y in node_location:
+                    common.mouse_move_click(x,y)
+                    common.sleep(1)
+                    if common.element_exist("pictures/mirror/general/nav_enter.png"):
+                        break
+            common.click_matching("pictures/mirror/general/nav_enter.png")
 
     def sell_gifts(self):
         """Handles Selling gifts"""
@@ -529,17 +540,8 @@ class Mirror:
         self.logger.info("Exiting Fusion")
 
     def rest_shop(self):
-        #Flow should be Sell > Heal > Enhance > Buy since cost is scarce and stronger gifts is better
+        #Flow should be Fuse > Heal > Enhance > Buy since cost is scarce and stronger gifts is better
         self.logger.info("Restshop")
-        ##SELLING
-        #common.click_matching("pictures/mirror/restshop/market/sell_gifts.png")
-        #if common.element_exist("pictures/mirror/restshop/scroll_bar.png"): #if scroll bar present scrolls to the start
-        #    common.click_matching("pictures/mirror/restshop/scroll_bar.png")
-        #    for i in range(5):
-        #        common.mouse_scroll(1000)
-        #self.logger.debug("CHECKING FOR SELLABLE GIFTS")
-        #self.sell_gifts()
-        #common.click_matching("pictures/mirror/restshop/close.png")
 
         #FUSING
         self.fuse_gifts()
