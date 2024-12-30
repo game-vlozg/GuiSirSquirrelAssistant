@@ -242,10 +242,10 @@ class Mirror:
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
         
-        if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
-            self.choose_pack('pictures/mirror/packs/f4/miracle.png')
+        #if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
+        #    self.choose_pack('pictures/mirror/packs/f4/miracle.png')
 
-        elif self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
             common.mouse_move(200,200)
@@ -422,6 +422,8 @@ class Mirror:
                     common.sleep(1)
                     if common.element_exist("pictures/mirror/general/nav_enter.png"):
                         break
+                    if common.element_exist("pictures/general/defeat.png") or common.element_exist("pictures/general/victory.png"):
+                        return
             common.click_matching("pictures/mirror/general/nav_enter.png")
 
     def sell_gifts(self):
@@ -483,8 +485,6 @@ class Mirror:
             for i in range(5):
                 common.mouse_scroll(1000)
             common.sleep(0.5)
-
-        common.error_screenshot()
         
         while(True):
             fusion_gifts = self.find_gifts(statuses)
