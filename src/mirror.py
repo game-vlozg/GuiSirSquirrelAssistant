@@ -193,6 +193,8 @@ class Mirror:
             common.key_press("enter")
             #common.click_matching("pictures/squads/confirm_squad.png")
             self.status = "poise"
+            while(not common.element_exist("pictures/mirror/grace/grace_menu.png")): #added check for default state
+                common.sleep(0.5) #Transitional to Grace of Dreams
             return
         #This is to bring us to the first entry of teams
         found = common.match_image("pictures/mirror/general/squad_select.png")
@@ -423,6 +425,7 @@ class Mirror:
                     if common.element_exist("pictures/mirror/general/nav_enter.png"):
                         break
                     if common.element_exist("pictures/general/defeat.png") or common.element_exist("pictures/general/victory.png"):
+                        self.logger.debug("Detected Victory screen")
                         return
             common.click_matching("pictures/mirror/general/nav_enter.png")
 
@@ -468,11 +471,11 @@ class Mirror:
         statuses.remove(self.status)
         self.logger.info("Starting Fusion")
         common.click_matching("pictures/mirror/restshop/fusion/fuse.png")
-        common.sleep(0.5)
-        if not common.element_exist("pictures/mirror/restshop/fusion/middle_box.png"):
+        common.sleep(1)
+        if not common.element_exist("pictures/mirror/restshop/fusion/fuse_menu.png"):
             self.logger.info("FUSION: Not Enough Gifts for Fusion")
             return
-        common.click_matching("pictures/mirror/restshop/fusion/middle_box.png")
+        common.mouse_move_click(common.scale_x(730),common.scale_y(700))
         status_picture = mirror_utils.fusion_choice(self.status)
         common.click_matching(status_picture)
         common.click_matching("pictures/general/confirm_b.png")
@@ -485,7 +488,7 @@ class Mirror:
             for i in range(5):
                 common.mouse_scroll(1000)
             common.sleep(0.5)
-        
+
         while(True):
             fusion_gifts = self.find_gifts(statuses)
             self.logger.debug("Initial Gifts")
