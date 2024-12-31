@@ -20,7 +20,7 @@ There are already other auto mirror dungeon tools out there so why should you us
 * E.G.O Gift Purchase
     * Sir Squirrel purchases E.G.O Gifts according to the status you chose as well as keywordless gifts
 * Resolution Aware
-    * Sir Squirrel now works regardless of resolution
+    * Sir Squirrel now works regardless of resolution except for Ultrawide Resolutions
 * E.G.O Usage
     * Sir Squirrel now uses E.G.O in battle for unfavorable clashes
 * E.G.O Gift Fusion
@@ -44,6 +44,8 @@ These are features i intend to add when i have time for Sir Squirrel development
 * E.G.O Usage might not work on very low resolutions (1280x720)
 * Sir Squirrel does not work on MULTI-MONITOR SETUPS.
      * You can try running it on the primary monitor or just disconnect until you only have one monitor
+* Sir Squirrel does not work on Ultrawide Resolutions
+     * Unfortunately ultrawide displays UI wise is a mess and very hard to account for due to different scaling that isnt standard. As such if you are on ultrawide please set your windows resolution to the nearest 16:9 resolution and use borderless fullscreen and run the bot as per normal
 
 # Bug Reporting
 Please let me know about any issues you face with Sir Squirrel and I will do my best to look into it.
