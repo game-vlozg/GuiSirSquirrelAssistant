@@ -135,21 +135,6 @@ def market_choice(status):
             return "pictures/mirror/restshop/market/pierce_market.png"
         case "blunt":
             return "pictures/mirror/restshop/market/blunt_market.png"
-
-def grace_choice(grace):
-    match grace:
-        case 1:
-            return "pictures/mirror/grace/10.png"
-        case 2:
-            return "pictures/mirror/grace/20.png"
-        case 3:
-            return "pictures/mirror/grace/30.png"
-        case 4:
-            return "pictures/mirror/grace/40.png"
-        case 5:
-            return "pictures/mirror/grace/50.png"
-        case 6:
-            return "pictures/mirror/grace/60.png"
         
 def fusion_choice(status):
     match status:
@@ -167,6 +152,12 @@ def fusion_choice(status):
             return "pictures/mirror/restshop/fusion/rupture_fusion.png"
         case "tremor":
             return "pictures/mirror/restshop/fusion/tremor_fusion.png"
+        case "slash":
+            return "pictures/mirror/restshop/fusion/slash_fusion.png"
+        case "pierce":
+            return "pictures/mirror/restshop/fusion/pierce_fusion.png"
+        case "blunt":
+            return "pictures/mirror/restshop/fusion/blunt_fusion.png"
         
 def enhance_shift(status):
     match status:

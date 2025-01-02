@@ -37,6 +37,8 @@ class Mirror:
 
     def setup_mirror(self):
         """Setting up the Mirror Dungeon Run"""
+        while(not common.element_exist("pictures/mirror/general/md_enter.png")):
+            common.sleep(0.5)
         common.click_matching("pictures/mirror/general/md_enter.png")
 
         if common.element_exist("pictures/mirror/general/explore_reward.png"):
