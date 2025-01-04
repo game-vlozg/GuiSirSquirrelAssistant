@@ -5,7 +5,7 @@ import threading
 import requests
 import keyboard  # Import the keyboard module
 from src import mirror
-from src.core import pre_md_setup
+from src.core import pre_md_setup,reconnect
 from src.common import error_screenshot
 
 with open("config/status_selection.txt", "r") as f:
@@ -13,7 +13,7 @@ with open("config/status_selection.txt", "r") as f:
     
 def update():
     r = requests.get("https://api.github.com/repos/Samsterr/SirSquirrelAssistant/releases/latest")
-    tag = "1.0.3.7.1"
+    tag = "1.0.3.7.2"
     r_tag = r.json()["tag_name"]
     if r_tag != tag:
         print("A New Version is Available! Downloading it to your current folder")
@@ -34,9 +34,16 @@ def start_exit_listener():
     while True:
         keyboard.wait('ctrl+q')  # Block until Ctrl+Q is pressed
 
+def connection_listener():
+    while True:
+        reconnect()
+
 # Start the listener in a separate thread
 exit_listener_thread = threading.Thread(target=start_exit_listener, daemon=True)
 exit_listener_thread.start()
+
+connection_listener_thread = threading.Thread(target=connection_listener, daemon=True)
+connection_listener_thread.start()
 
 def mirror_dungeon_run(num_runs, logger):
     try:

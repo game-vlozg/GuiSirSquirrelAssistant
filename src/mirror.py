@@ -1,6 +1,7 @@
 from src import common, mirror_utils
 from src.core import skill_check,reconnect, battle, check_loading, transition_loading,post_run_load
 import logging
+import os
     
 class Mirror:
     def __init__(self, status):
@@ -108,10 +109,10 @@ class Mirror:
             common.click_matching("pictures/general/no_op.png")
             common.click_matching("pictures/general/close.png")
             self.logger.info("SERVER UNDERGOING MAINTAINANCE, BOT WILL STOP NOW!")
-            exit()
+            os._exit(0)
 
-        if common.element_exist("pictures/general/server_error.png"): #network connectivity issues
-            reconnect()
+        #if common.element_exist("pictures/general/server_error.png"): #network connectivity issues
+        #    reconnect()
 
         if common.element_exist("pictures/events/skip.png"): #if hitting the events click skip to determine which is it
             self.logger.info("Entered ? node")
@@ -128,6 +129,10 @@ class Mirror:
         elif common.element_exist("pictures/mirror/restshop/shop.png"): #new combined shop and rest stop
             self.rest_shop()
 
+        elif common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
+            self.logger.info("EGO GIFT Prompt")
+            common.click_matching("pictures/general/confirm_b.png") #might replace with enter
+
         elif common.element_exist("pictures/mirror/general/reward_select.png"): #checks if in reward select
             self.reward_select()
 
@@ -136,10 +141,6 @@ class Mirror:
 
         elif common.element_exist("pictures/mirror/general/inpack.png"): #checks if in pack select
             self.pack_selection()
-
-        elif common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
-            self.logger.info("EGO GIFT Prompt")
-            common.click_matching("pictures/general/confirm_b.png") #might replace with enter
 
         elif common.element_exist("pictures/battle/winrate.png"):
             battle()
@@ -774,7 +775,7 @@ class Mirror:
             common.click_matching("pictures/general/confirm_w.png")
             post_run_load()
             self.logger.info("You dont have enough modules to continue")
-            exit() 
+            os._exit(0)
 
     def defeat(self):
         self.logger.info("Run Lost")
