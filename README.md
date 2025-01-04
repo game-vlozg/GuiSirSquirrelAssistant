@@ -1,6 +1,6 @@
 # Sir Squirrel Assistant
 Sir Squirrel Assistant is a helpful tool for the game Limbus Company by Project Moon. No longer will you need to hit the mines as Sir Squirrel will do it for you.
-
+Note that SirSquirrel is mainly for MDN and MDH is not supported
 # Features
 There are already other auto mirror dungeon tools out there so why should you use Sir Squirrel instead. Well here's why
 * E.G.O Gift Choice
