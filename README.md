@@ -40,7 +40,7 @@ These are features i intend to add when i have time for Sir Squirrel development
 * Any Suggestions or Enhancements i can make to Sir Squirrel based on feedback that is feasible for development
 
 # Known Issues
-* Need feedback if for the new events added
+* Event Buff Selection menu is not accounted for as i have yet to encounter it to get a picture for it
 * E.G.O Usage might not work on very low resolutions (1280x720)
 * Sir Squirrel does not work on MULTI-MONITOR SETUPS.
      * You can try running it on the primary monitor or just disconnect until you only have one monitor
