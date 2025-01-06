@@ -6,14 +6,14 @@ import requests
 import keyboard  # Import the keyboard module
 from src import mirror
 from src.core import pre_md_setup,reconnect
-from src.common import error_screenshot
+from src.common import error_screenshot, element_exist
 
 with open("config/status_selection.txt", "r") as f:
     status = [i.strip().lower() for i in f.readlines()]
     
 def update():
     r = requests.get("https://api.github.com/repos/Samsterr/SirSquirrelAssistant/releases/latest")
-    tag = "1.0.3.7.2"
+    tag = "1.0.3.8"
     r_tag = r.json()["tag_name"]
     if r_tag != tag:
         print("A New Version is Available! Downloading it to your current folder")
@@ -35,18 +35,16 @@ def start_exit_listener():
         keyboard.wait('ctrl+q')  # Block until Ctrl+Q is pressed
 
 def connection_listener():
-    while True:
-        reconnect()
+    reconnect()
 
 # Start the listener in a separate thread
 exit_listener_thread = threading.Thread(target=start_exit_listener, daemon=True)
 exit_listener_thread.start()
 
-connection_listener_thread = threading.Thread(target=connection_listener, daemon=True)
-connection_listener_thread.start()
-
 def mirror_dungeon_run(num_runs, logger):
     try:
+        connection_event = threading.Event()
+        connection_event.set()
         run_count = 0
         win_count = 0
         lose_count = 0
@@ -60,7 +58,16 @@ def mirror_dungeon_run(num_runs, logger):
             MD = mirror.Mirror(status_list[i])
             MD.setup_mirror()
             while(run_complete != 1):
-                win_flag, run_complete = MD.mirror_loop()
+                if connection_event.is_set():
+                    win_flag, run_complete = MD.mirror_loop()
+                if element_exist("pictures/general/server_error.png"):
+                    connection_event.clear()
+                    logger.debug("Pausing, Resuming")
+                    connection_listener_thread = threading.Thread(target=connection_listener)
+                    connection_listener_thread.start()
+                    connection_listener_thread.join()
+                    logger.debug("Reconnected, Resuming")
+                    connection_event.set()
             if win_flag == 1:
                 win_count += 1
             else:

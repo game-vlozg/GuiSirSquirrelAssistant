@@ -1,5 +1,6 @@
 from src import common
 from sys import exit
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -53,8 +54,7 @@ def reconnect():
     if common.element_exist("pictures/general/no_op.png"):
         common.click_matching("pictures/general/close.png")
         logger.info("COULD NOT RECONNECT TO THE SERVER. SHUTTING DOWN!")
-        exit()
-    logger.info("Reconnected")
+        os._exit(0)
 
 def battle():
     """Handles battles by mashing winrate, also handles skill checks and end of battle loading"""
