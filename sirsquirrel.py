@@ -8,6 +8,8 @@ from src import mirror
 from src.core import pre_md_setup,reconnect
 from src.common import error_screenshot, element_exist
 
+connection_event = threading.Event()
+
 with open("config/status_selection.txt", "r") as f:
     status = [i.strip().lower() for i in f.readlines()]
     
@@ -37,14 +39,14 @@ def start_exit_listener():
 def connection_listener():
     reconnect()
 
-# Start the listener in a separate thread
-exit_listener_thread = threading.Thread(target=start_exit_listener, daemon=True)
-exit_listener_thread.start()
+def connection_check():
+    while True:
+        while(element_exist("pictures/general/connection.png")):
+            connection_event.clear()
+        connection_event.set()
 
 def mirror_dungeon_run(num_runs, logger):
     try:
-        connection_event = threading.Event()
-        connection_event.set()
         run_count = 0
         win_count = 0
         lose_count = 0
@@ -62,7 +64,7 @@ def mirror_dungeon_run(num_runs, logger):
                     win_flag, run_complete = MD.mirror_loop()
                 if element_exist("pictures/general/server_error.png"):
                     connection_event.clear()
-                    logger.debug("Pausing, Resuming")
+                    logger.debug("Disconnected, Pausing")
                     connection_listener_thread = threading.Thread(target=connection_listener)
                     connection_listener_thread.start()
                     connection_listener_thread.join()
@@ -91,6 +93,14 @@ def main():
     update()
     parser.add_argument("RunCount", help="How many times you want to run Mirror Dungeons", type=int)
     args = parser.parse_args()
+
+    connection_event.set()
+    exit_listener_thread = threading.Thread(target=start_exit_listener, daemon=True)
+    exit_listener_thread.start()
+
+    connection_thread = threading.Thread(target=connection_check)
+    connection_thread.start()
+
     mirror_dungeon_run(args.RunCount, logger)
 
 if __name__ == "__main__":

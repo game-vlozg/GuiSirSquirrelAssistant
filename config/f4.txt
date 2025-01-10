@@ -4,6 +4,7 @@ pictures/mirror/packs/f4/miracle.png
 pictures/mirror/packs/f4/envy.png
 pictures/mirror/packs/f4/warp.png
 pictures/mirror/packs/f4/tearful.png
+pictures/mirror/packs/f4/fullstop.png
 pictures/mirror/packs/f4/time.png
 pictures/mirror/packs/f4/pride.png
 pictures/mirror/packs/f4/yield.png

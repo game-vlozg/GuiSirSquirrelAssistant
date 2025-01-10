@@ -106,7 +106,7 @@ def ego_check():
         logger.debug("BAD CLASHES FOUND")
         for x,y in bad_clashes:
             usable_ego = []
-            common.mouse_move(x-common.scale_x(30),y+common.scale_y(100))
+            common.mouse_move(x-common.scale_x(55),y+common.scale_y(100))
             common.mouse_hold()
             egos = common.match_image("pictures/battle/ego/sanity.png")
             for i in egos:

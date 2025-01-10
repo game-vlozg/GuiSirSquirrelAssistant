@@ -246,11 +246,11 @@ class Mirror:
             x,y = found[0]
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
-        
-        if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
-            self.choose_pack('pictures/mirror/packs/f4/miracle.png')
 
-        elif self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        #if floor == "f4" and common.element_exist('pictures/mirror/packs/f4/miracle.png'):
+        #    self.choose_pack('pictures/mirror/packs/f4/miracle.png')
+
+        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
             common.mouse_move(200,200)
@@ -376,6 +376,20 @@ class Mirror:
                 break
         common.sleep(3) #needs to wait for the gain to credits
 
+    def check_nodes(self,nodes):
+        non_exist = [1,1,1]
+        top = common.greyscale_match_image("pictures/mirror/general/node_1.png")
+        middle = common.greyscale_match_image("pictures/mirror/general/node_2.png")
+        bottom = common.greyscale_match_image("pictures/mirror/general/node_3.png")
+        if not top:
+            non_exist[0] = 0
+        if not middle:
+            non_exist[1] = 0
+        if not bottom:
+            non_exist[2] = 0
+        nodes = [y for y, exists in zip(nodes, non_exist) if exists != 0]
+        return nodes
+
     def navigation(self):
         """Core navigation function to reach the end of floor"""
         self.logger.info("Navigating")
@@ -393,9 +407,14 @@ class Mirror:
         #Find which node is the traversable one
             node_location = []
             if self.aspect_ratio == "16:10": #Oddly the old coordinates work for 16:10 but 16:9/4:3 need new ones
-                node_y = [607,189,1036] #for 16/10
+                node_y = [189,607,1036] #for 16/10
             else:
                 node_y = [263,689,1115] #for 4/3 16/9
+            
+            #Checking for which direction on the nodes and removing those that dont exist
+            node_y = self.check_nodes(node_y)
+            self.logger.debug("Checking for Node Paths")
+            self.logger.debug(node_y)
 
             for y in node_y:
                 if self.aspect_ratio == "4:3":
@@ -474,7 +493,7 @@ class Mirror:
         statuses.remove(self.status)
         self.logger.info("Starting Fusion")
         common.click_matching("pictures/mirror/restshop/fusion/fuse.png")
-        common.sleep(1)
+        common.sleep(1.5)
         if not common.element_exist("pictures/mirror/restshop/fusion/fuse_menu.png"):
             self.logger.info("FUSION: Not Enough Gifts for Fusion")
             return
