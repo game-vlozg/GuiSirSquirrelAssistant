@@ -145,6 +145,13 @@ class Mirror:
         elif common.element_exist("pictures/battle/winrate.png"):
             battle()
 
+        elif common.element_exist("pictures/mirror/general/event_effect.png"):
+            found = common.match_image("pictures/mirror/general/event_select.png")
+            x,y = common.random_choice(found)
+            common.mouse_move_click(x,y)
+            common.sleep(1)
+            common.click_matching("pictures/general/confirm_b.png")
+
         return self.check_run()
 
     def grace_of_stars(self):
