@@ -12,3 +12,4 @@ pictures/mirror/packs/f5/yield.png
 pictures/mirror/packs/f5/slicers.png
 pictures/mirror/packs/f5/sloth.png
 pictures/mirror/packs/f5/pride.png
+pictures/mirror/packs/f5/lcb_check.png
