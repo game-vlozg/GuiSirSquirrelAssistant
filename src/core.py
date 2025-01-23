@@ -139,7 +139,7 @@ def battle_check(): #pink shoes, woppily, doomsday clock
         common.wait_skip("pictures/events/continue.png")
         return 0
         
-    if common.element_exist("pictures/battle/NO.png"): #Woppily
+    elif common.element_exist("pictures/battle/NO.png"): #Woppily
         logger.info("WOPPILY PT2")
         for i in range(3):
             common.click_matching("pictures/battle/NO.png")
@@ -154,14 +154,23 @@ def battle_check(): #pink shoes, woppily, doomsday clock
             while(not common.element_exist("pictures/battle/NO.png")):
                 common.mouse_click()
 
-    if common.element_exist("pictures/battle/refuse.png"): # Pink Shoes
+    elif common.element_exist("pictures/battle/refuse.png"): # Pink Shoes
         logger.info("PINK SHOES")
         common.click_matching("pictures/battle/refuse.png")
         common.wait_skip("pictures/events/proceed.png")
         skill_check()
         return 0
     
-    if common.element_exist("pictures/battle/offer_sinner.png"): #Doomsday Clock
+    elif common.element_exist("pictures/battle/shield_passive.png"): #Hohenheim
+        #common.click_matching("pictures/battle/small_scroll.png")
+        #for i in range(5):
+        #    common.mouse_scroll(-1000)
+        #common.click_matching("pictures/battle/sp_passive.png")
+        common.click_matching("pictures/battle/shield_passive.png")
+        common.wait_skip("pictures/events/continue.png")
+        return 0
+    
+    elif common.element_exist("pictures/battle/offer_sinner.png"): #Doomsday Clock
         logger.info("DOOMSDAY CLOCK")
         found = common.match_image("pictures/battle/offer_clay.png")
         if found:
@@ -180,7 +189,7 @@ def battle_check(): #pink shoes, woppily, doomsday clock
         skill_check()
         return 0
 
-    if common.element_exist("pictures/battle/hug_bear.png"):
+    elif common.element_exist("pictures/battle/hug_bear.png"):
         logger.info("TEDDY BEAR")
         common.click_matching("pictures/battle/hug_bear.png")
         while(not common.element_exist("pictures/events/proceed.png")):

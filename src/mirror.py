@@ -752,6 +752,26 @@ class Mirror:
                 common.click_skip(4)
                 self.event_choice()
 
+        elif common.element_exist("pictures/events/select_right.png"): #select the right answer
+            self.logger.info("Select the right answer")
+            if common.element_exist("pictures/events/helterfly.png"):
+                common.click_matching("pictures/events/helterfly.png")
+            elif common.element_exist("pictures/events/midwinter.png"):
+                common.click_matching("pictures/events/midwinter.png")
+            common.mouse_move_click(common.scale_x(1193),common.scale_y(623))
+            while(True):
+                common.mouse_click()
+                if common.element_exist("pictures/events/proceed.png"):
+                    common.click_matching("pictures/events/proceed.png")
+                    break
+                if common.element_exist("pictures/events/continue.png"):
+                    common.click_matching("pictures/events/continue.png")
+                    break
+            common.sleep(1)
+            if common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
+                #common.click_matching("pictures/general/confirm_b.png")
+                common.key_press("enter")
+
         elif common.element_exist("pictures/events/win_battle.png"): #Win battle to gain
             self.logger.info("Win battle to gain EGO Gift")
             common.click_matching("pictures/events/win_battle.png")
