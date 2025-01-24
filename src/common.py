@@ -139,7 +139,7 @@ def match_image(template_path, threshold=0.8):
     # Return the list of center coordinates of all found elements or None if no elements found
     return []
 
-def greyscale_match_image(template_path, threshold=0.8):
+def greyscale_match_image(template_path, threshold=0.75):
     """Finds the image specified and returns the center coordinates, regardless of screen resolution,
     and saves screenshots of each match found."""
     
