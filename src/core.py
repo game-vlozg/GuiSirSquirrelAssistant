@@ -162,11 +162,18 @@ def battle_check(): #pink shoes, woppily, doomsday clock
         return 0
     
     elif common.element_exist("pictures/battle/shield_passive.png"): #Hohenheim
-        #common.click_matching("pictures/battle/small_scroll.png")
-        #for i in range(5):
-        #    common.mouse_scroll(-1000)
-        #common.click_matching("pictures/battle/sp_passive.png")
-        common.click_matching("pictures/battle/shield_passive.png")
+        options = ["pictures/battle/shield_passive.png","pictures/battle/poise_passive.png", "pictures/battle/sp_passive.png"]
+        for option in options:
+            if option == "pictures/battle/sp_passive.png":
+                common.click_matching("pictures/battle/small_scroll.png")
+                for i in range(5):
+                    common.mouse_scroll(-1000)
+            common.click_matching(option)
+            common.sleep(0.5)
+            if not common.element_exist("pictures/events/result.png",0.9):
+                continue
+            else:
+                break
         common.wait_skip("pictures/events/continue.png")
         return 0
     
