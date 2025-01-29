@@ -162,6 +162,7 @@ def battle_check(): #pink shoes, woppily, doomsday clock
         return 0
     
     elif common.element_exist("pictures/battle/shield_passive.png"): #Hohenheim
+        logger.info("Hohenheim")
         options = ["pictures/battle/shield_passive.png","pictures/battle/poise_passive.png", "pictures/battle/sp_passive.png"]
         for option in options:
             if option == "pictures/battle/sp_passive.png":
