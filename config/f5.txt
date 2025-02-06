@@ -1,7 +1,6 @@
 pictures/mirror/packs/f5/gluttony.png
 pictures/mirror/packs/f5/gloom.png
 pictures/mirror/packs/f5/envy.png
-pictures/mirror/packs/f5/lust.png
 pictures/mirror/packs/f5/world.png
 pictures/mirror/packs/f5/warp.png
 pictures/mirror/packs/f5/crushers.png

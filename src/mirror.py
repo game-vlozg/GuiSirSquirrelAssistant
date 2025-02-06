@@ -212,6 +212,7 @@ class Mirror:
         common.mouse_move(x+common.uniform_scale_single(90),y+common.uniform_scale_single(90))
         for i in range(30):
             common.mouse_scroll(1000)
+        common.sleep(1)
         #scrolls through all the squads in steps to look for the name
         for _ in range(4):
             if not common.element_exist(status):
@@ -254,10 +255,16 @@ class Mirror:
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
 
-        #if floor == "f5" and common.element_exist('pictures/mirror/packs/f5/lcb_check.png'):
-        #    self.choose_pack('pictures/mirror/packs/f5/lcb_check.png')
+        if floor == "f4" and common.element_exist("pictures/mirror/packs/f4/yield.png"):
+            self.choose_pack("pictures/mirror/packs/f4/yield.png")
+  
+        #elif floor == "f5" and common.element_exist("pictures/mirror/packs/f5/yield.png"):
+        #    self.choose_pack("pictures/mirror/packs/f5/yield.png")
 
-        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        elif floor == "f5" and common.element_exist('pictures/mirror/packs/f5/lcb_check.png'):
+            self.choose_pack('pictures/mirror/packs/f5/lcb_check.png')
+
+        elif self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
             common.mouse_move(200,200)
@@ -314,10 +321,12 @@ class Mirror:
         if floor == "f4":
             exclusion = ["pictures/mirror/packs/f4/wrath.png",
                        "pictures/mirror/packs/f4/crawling.png",
-                       "pictures/mirror/packs/f4/violet.png"]
+                       "pictures/mirror/packs/f4/violet.png",
+                       "pictures/mirror/packs/f4/lust.png"]
         if floor == "f5":
             exclusion = ["pictures/mirror/packs/f5/crawling.png",
-                         "pictures/mirror/packs/f5/wrath.png"]
+                         "pictures/mirror/packs/f5/wrath.png",
+                         "pictures/mirror/packs/f5/lust.png"]
             
         detected = any(common.element_exist(i) for i in exclusion) #use 0.75 if current has issues
         return int(detected)
@@ -586,10 +595,14 @@ class Mirror:
         if common.element_exist("pictures/mirror/restshop/small_not.png"):
             self.logger.info("Restshop: Not enough Cost, Exiting")
             common.click_matching("pictures/mirror/restshop/leave.png")
+            if not common.element_exist("pictures/general/confirm_w.png"):
+                common.mouse_click(50,50)
+                common.click_matching("pictures/mirror/restshop/leave.png")
             common.click_matching("pictures/general/confirm_w.png") 
             
         else:
             #HEALING
+            self.logger.info("Restshop: Check if healing is needed")
             common.click_matching("pictures/mirror/restshop/heal.png")
             common.click_matching("pictures/mirror/restshop/heal_all.png")
             self.logger.info("Restshop: Healed all sinners")
@@ -657,6 +670,9 @@ class Mirror:
 
         #LEAVING
         common.click_matching("pictures/mirror/restshop/leave.png")
+        if not common.element_exist("pictures/general/confirm_w.png"):
+            common.mouse_click(50,50)
+            common.click_matching("pictures/mirror/restshop/leave.png")
         common.click_matching("pictures/general/confirm_w.png")
         return
 
