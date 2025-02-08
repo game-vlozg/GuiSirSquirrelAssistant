@@ -255,16 +255,16 @@ class Mirror:
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
 
-        if floor == "f4" and common.element_exist("pictures/mirror/packs/f4/yield.png"):
-            self.choose_pack("pictures/mirror/packs/f4/yield.png")
+        #if floor == "f4" and common.element_exist("pictures/mirror/packs/f4/yield.png"):
+        #    self.choose_pack("pictures/mirror/packs/f4/yield.png")
   
         #elif floor == "f5" and common.element_exist("pictures/mirror/packs/f5/yield.png"):
         #    self.choose_pack("pictures/mirror/packs/f5/yield.png")
 
-        elif floor == "f5" and common.element_exist('pictures/mirror/packs/f5/lcb_check.png'):
-            self.choose_pack('pictures/mirror/packs/f5/lcb_check.png')
+        #elif floor == "f5" and common.element_exist('pictures/mirror/packs/f5/lcb_check.png'):
+        #    self.choose_pack('pictures/mirror/packs/f5/lcb_check.png')
 
-        elif self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")
             common.click_matching("pictures/mirror/general/refresh.png")
             common.mouse_move(200,200)
@@ -297,6 +297,8 @@ class Mirror:
     def choose_pack(self,pack_image, threshold=0.8):
         found = common.match_image(pack_image,threshold)
         self.logger.debug(found)
+        if pack_image == "pictures/mirror/packs/status/pierce_pack.png":
+            found = [x for x in found if x[1] > common.scale_y(1092)] #Removes poor detections
         if common.element_exist("pictures/mirror/packs/status/owned.png"):
             owned_found = common.match_image("pictures/mirror/packs/status/owned.png")
             self.logger.debug(owned_found)
@@ -596,7 +598,7 @@ class Mirror:
             self.logger.info("Restshop: Not enough Cost, Exiting")
             common.click_matching("pictures/mirror/restshop/leave.png")
             if not common.element_exist("pictures/general/confirm_w.png"):
-                common.mouse_click(50,50)
+                common.mouse_move_click(50,50)
                 common.click_matching("pictures/mirror/restshop/leave.png")
             common.click_matching("pictures/general/confirm_w.png") 
             
@@ -671,7 +673,7 @@ class Mirror:
         #LEAVING
         common.click_matching("pictures/mirror/restshop/leave.png")
         if not common.element_exist("pictures/general/confirm_w.png"):
-            common.mouse_click(50,50)
+            common.mouse_move_click(50,50)
             common.click_matching("pictures/mirror/restshop/leave.png")
         common.click_matching("pictures/general/confirm_w.png")
         return
