@@ -176,7 +176,7 @@ def enhance_shift(status):
         case "tremor":
             return (18,-45)
         case "slash":
-            return (15,-48)
+            return (16,-48)
         case "pierce":
             return (16,-46)
         case "blunt":

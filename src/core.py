@@ -100,6 +100,7 @@ def ego_check():
         logger.debug("STRUGGLING FOUND")
         bad_clashes += common.match_image("pictures/battle/ego/struggling.png",0.79)
     
+    bad_clashes = [i for i in bad_clashes if i]
     if len(bad_clashes):
         bad_clashes = [x for x in bad_clashes if x[1] > common.scale_y(1023)] # this is to remove any false positives
         logger.debug(bad_clashes)
@@ -118,13 +119,16 @@ def ego_check():
                 logger.debug("EGO USABLE")
                 ego = common.random_choice(usable_ego)
                 x,y = ego
-                while(common.element_exist("pictures/battle/ego/sanity.png")):
+                if common.element_exist("pictures/battle/ego/sanity.png"):
                     common.mouse_move_click(x + common.scale_x(30), y+common.scale_y(30))
-                    common.sleep(0.5)
+                    common.sleep(0.3)
+                    common.mouse_click()
+                    common.sleep(1)
             else:
                 logger.debug("EGO UNUSABLE")
-                while(common.element_exist("pictures/battle/ego/sanity.png")):
+                if common.element_exist("pictures/battle/ego/sanity.png"):
                     common.mouse_move_click(200,200)
+                    common.sleep(1)
         common.key_press("p") #Change to Damage
         common.key_press("p") #Deselects
         common.key_press("p") #Back to winrate

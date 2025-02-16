@@ -702,6 +702,7 @@ class Mirror:
             if common.element_exist(status):
                 shift_x, shift_y = mirror_utils.enhance_shift(self.status) or (12, -41)
                 gifts = common.match_image(status)
+                gifts = [i for i in gifts if i[0] > common.scale_x(1200)] #remove false positives on the left side
                 gifts = [i for i in gifts if common.luminence(i[0]+common.uniform_scale_single(shift_x),i[1]+common.uniform_scale_single(shift_y)) > 21]
                 if len(gifts):
                     self.upgrade(gifts,status,shift_x,shift_y)
