@@ -5,14 +5,17 @@ import threading
 import requests
 import keyboard  # Import the keyboard module
 from src import mirror
-from src.core import reconnect,md_setup
-from src.common import error_screenshot, match_image
+from src.core import pre_md_setup,reconnect
+from src.common import error_screenshot, element_exist
 
 connection_event = threading.Event()
+
+with open("config/status_selection.txt", "r") as f:
+    status = [i.strip().lower() for i in f.readlines()]
     
 def update():
     r = requests.get("https://api.github.com/repos/Samsterr/SirSquirrelAssistant/releases/latest")
-    tag = "1.0.5.0"
+    tag = "1.0.5.0.2"
     r_tag = r.json()["tag_name"]
     if r_tag != tag:
         print("A New Version is Available! Downloading it to your current folder")
@@ -27,42 +30,52 @@ def exit_program():
     os._exit(0)
 
 # Start a background thread to listen for 'Ctrl+Q'
-def exit_listener():
+def start_exit_listener():
     keyboard.add_hotkey('ctrl+q', exit_program)  # Register hotkey Ctrl+Q to exit
     # Keep the listener active without blocking the main thread
     while True:
         keyboard.wait('ctrl+q')  # Block until Ctrl+Q is pressed
 
 def connection_listener():
+    reconnect()
+
+def connection_check():
     while True:
-        if match_image("pictures/general/connection.png"):
+        while(element_exist("pictures/general/connection.png")):
             connection_event.clear()
         connection_event.set()
 
-def mirror_dungeon(run_count, logger):
-    with open("config/status_selection.txt", "r") as f:
-        status = [i.strip().lower() for i in f.readlines()]
+def mirror_dungeon_run(num_runs, logger):
     try:
-        num_runs = 0
-        status_list = (status * ((run_count // len(status)) + 1))[:run_count]
-        logger.info("Starting")
-        for i in range(run_count):
-            logger.info("Run {}".format(num_runs + 1))
+        run_count = 0
+        win_count = 0
+        lose_count = 0
+        status_list = (status * ((num_runs // len(status)) + 1))[:num_runs]
+        logger.info("Starting Run")
+        for i in range(num_runs):
+            logger.info("Run {}".format(run_count + 1))
+            pre_md_setup()
             logger.info("Current Team: "+status_list[i])
-            run_complete = False
-            md_setup()
+            run_complete = 0
             MD = mirror.Mirror(status_list[i])
-            MD.setup()
-            while(not run_complete):
+            MD.setup_mirror()
+            while(run_complete != 1):
                 if connection_event.is_set():
-                    run_complete = MD.mirror_loop()
-                if match_image("pictures/general/server_error.png"):
+                    win_flag, run_complete = MD.mirror_loop()
+                if element_exist("pictures/general/server_error.png"):
                     connection_event.clear()
                     logger.debug("Disconnected, Pausing")
-                    reconnect()
+                    connection_listener_thread = threading.Thread(target=connection_listener)
+                    connection_listener_thread.start()
+                    connection_listener_thread.join()
                     logger.debug("Reconnected, Resuming")
-                    connection_event.set()    
-            num_runs += 1   
+                    connection_event.set()
+            if win_flag == 1:
+                win_count += 1
+            else:
+                lose_count += 1
+            run_count += 1
+        logger.info('Won Runs {}, Lost Runs {}'.format(win_count, lose_count))
     except Exception as e:
         error_screenshot()
         logger.exception(e)
@@ -82,13 +95,13 @@ def main():
     args = parser.parse_args()
 
     connection_event.set()
-    exit_listener_thread = threading.Thread(target=exit_listener, daemon=True)
+    exit_listener_thread = threading.Thread(target=start_exit_listener, daemon=True)
     exit_listener_thread.start()
 
-    connection_thread = threading.Thread(target=connection_listener, daemon=True)
+    connection_thread = threading.Thread(target=connection_check)
     connection_thread.start()
 
-    mirror_dungeon(args.RunCount, logger)
+    mirror_dungeon_run(args.RunCount, logger)
 
 if __name__ == "__main__":
     main()
