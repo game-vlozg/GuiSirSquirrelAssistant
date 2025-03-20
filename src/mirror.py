@@ -255,11 +255,8 @@ class Mirror:
         self.logger.debug(common.luminence(x,y))
         refresh_flag = common.luminence(x,y) < 70 
 
-        #if floor == "f4" and common.element_exist("pictures/mirror/packs/f4/yield.png"):
-        #    self.choose_pack("pictures/mirror/packs/f4/yield.png")
-#
-        #elif floor == "f5" and common.element_exist("pictures/mirror/packs/f5/yield.png"):
-        #    self.choose_pack("pictures/mirror/packs/f5/yield.png")
+        #if floor == "f5" and common.element_exist("pictures/mirror/packs/f5/nocturnal.png"):
+        #    self.choose_pack("pictures/mirror/packs/f5/nocturnal.png")
 
         if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
             self.logger.info("Pack exclusion detected, refreshing")

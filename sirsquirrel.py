@@ -15,7 +15,7 @@ with open("config/status_selection.txt", "r") as f:
     
 def update():
     r = requests.get("https://api.github.com/repos/Samsterr/SirSquirrelAssistant/releases/latest")
-    tag = "1.0.5.0.2"
+    tag = "1.0.5.1"
     r_tag = r.json()["tag_name"]
     if r_tag != tag:
         print("A New Version is Available! Downloading it to your current folder")
@@ -23,7 +23,6 @@ def update():
         with open("sirsquirrel.7z", "wb") as f:
             f.write(r.content)
         print("Download Completed. Please look for the 7z and update as per usual before continuing")
-        os._exit(0)
 
 def exit_program():
     print("\nHotkey pressed. Exiting the program...")
