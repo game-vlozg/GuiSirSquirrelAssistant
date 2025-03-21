@@ -243,6 +243,10 @@ def skill_check():
         if common.element_exist("pictures/events/continue.png"):
             common.click_matching("pictures/events/continue.png")
             break
+        if common.element_exist("pictures/events/commence_battle.png"):
+            common.click_matching("pictures/events/commence_battle.png")
+            logger.info("Check Failed, Commencing Battle")
+            return
     logger.info("Finished Skill check")
 
     if common.element_exist("pictures/events/skip.png"):
