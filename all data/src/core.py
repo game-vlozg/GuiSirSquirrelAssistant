@@ -1,4 +1,4 @@
-from src import common
+import common
 from sys import exit
 import os
 import logging

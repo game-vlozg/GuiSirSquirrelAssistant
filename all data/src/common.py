@@ -83,7 +83,6 @@ def save_match_screenshot(screenshot, top_left, bottom_right, template_path, mat
         return
     # Save the cropped region
     cv2.imwrite(output_path, match_region)
-    print(f"Match saved at {output_path}")
 
 def match_image(template_path, threshold=0.8):
     """Finds the image specified and returns the center coordinates, regardless of screen resolution,
