@@ -6,7 +6,7 @@ so first of all, you need to go ingame, and change the name of a team to one of 
 change team name to burn > in macro toggle on the burn > done! whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
 
 extra info:
-if you toggle None then it wont choose a team and pick sinners from top left to bottom right, if you choose multiple then it will cycle through them,
+if you toggle None then it wont choose a team and pick sinners from top left to bottom right, if you choose multiple then it will cycle through them, when choosing gifts and packs and you have none then it will use poise.
 Your team section is only for mirror dungeon, for exp and threads you should click enter on a thread/luxcavation then choose the team then go back to main menu, and activate the macro, the macro will keep using that team unless game has to reconnect due to network issues
 
 assign sinner to name section:
