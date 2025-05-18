@@ -163,18 +163,27 @@ def squad_select_lux(mirror_instance):
     """
     logger.info(f"Selecting squad for battle")
     
-    # Check if squad needs to be selected
-    if (not common.element_exist("pictures/CustomAdded1080p/general/half_squad.png") and
-        not common.element_exist("pictures/CustomAdded1080p/general/five_squad.png")):
-        common.click_matching("pictures/CustomAdded1080p/general/clear_selection.png")
-        if common.element_exist("pictures/CustomAdded1080p/general/confirm.png"):
-            common.click_matching("pictures/CustomAdded1080p/general/confirm.png")
+    common.click_matching("pictures/CustomAdded1080p/general/clear_selection.png")
+    if common.element_exist("pictures/CustomAdded1080p/general/confirm.png"):
+        common.click_matching("pictures/CustomAdded1080p/general/confirm.png")
             
+    # Click squad members according to the configuration
+    for i, position in enumerate(mirror_instance.squad_order):
+        x, y = position
+        logger.debug(f"Selecting squad member {i+1} at ({x}, {y})")
+        common.mouse_move_click(x, y)
+
+#    if (not common.element_exist("pictures/CustomAdded1080p/general/half_squad.png") and
+#        not common.element_exist("pictures/CustomAdded1080p/general/five_squad.png")):
+#        common.click_matching("pictures/CustomAdded1080p/general/clear_selection.png")
+#       if common.element_exist("pictures/CustomAdded1080p/general/confirm.png"):
+#           common.click_matching("pictures/CustomAdded1080p/general/confirm.png")
+#           
         # Click squad members according to the configuration
-        for i, position in enumerate(mirror_instance.squad_order):
-            x, y = position
-            logger.debug(f"Selecting squad member {i+1} at ({x}, {y})")
-            common.mouse_move_click(x, y)
+#       for i, position in enumerate(mirror_instance.squad_order):
+#           x, y = position
+#           logger.debug(f"Selecting squad member {i+1} at ({x}, {y})")
+#           common.mouse_move_click(x, y)
         
     # Start battle
     logger.info(f"Starting battle")
