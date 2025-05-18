@@ -1,4 +1,6 @@
-this is a fork of sirquirrel's macro with gui, this will probably be updated time to time
+this is a fork of sirsquirrelassistant's macro but now with a gui + threads and exp automation + config + settings + a whole lotta shit!! (took 17 hours) clap plz, this will probably be updated time to time
+
+
 orignal README by sirsquirrel -
 ## This repo is no longer being maintained and won't be receiving any more updates
 # Sir Squirrel Assistant
