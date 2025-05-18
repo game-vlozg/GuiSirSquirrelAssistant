@@ -5,3 +5,5 @@ your team means which preset, so first of all go ingame into sinners and then in
 and then in the macro you will see "assign sinners to name" expand the one you chose, for this case burn, and then assign each number to the sinner so if you choose 1. Ishmael 2. hong lu 3. gregor then ingame it will choose in that order
 
 to start the macro go into the main menu of limbus company, the one named Window and then click start in the macro, have fun macroing
+
+for a better instruction please refer to the help section in gui

@@ -1,13 +1,8 @@
 the original macro was made by sirsquirrel
-this is just a fork with gui to make it easier
-I will be adding more features soon. and converting it into exe
-
-ctrl+q to toggle start and stop
+this is just a fork with gui to make it easier (also added exp and threads automation now)
 
 make sure to have python before using
 
 please let me know of any errors on discord
 my username is Kryxzort
 send me a friend request
-
-(threads and exp tab being blank is not a bug, I just put it there for future)

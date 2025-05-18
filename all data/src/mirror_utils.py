@@ -1,3 +1,22 @@
+import os
+import sys
+
+# Determine if running as executable or script
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        return os.path.dirname(sys.executable)
+    else:
+        # Running as script
+        folder_path = os.path.dirname(os.path.abspath(__file__))
+        # Check if we're in the src folder or main folder
+        if os.path.basename(folder_path) == 'src':
+            return os.path.dirname(folder_path)
+        return folder_path
+
+# Get base path for resource access
+BASE_PATH = get_base_path()
+
 def gift_choice(status):
     match status:
         case "sinking":

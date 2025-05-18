@@ -1,0 +1,22 @@
+hello!
+just walk through the tabs and read and you'll understand most of the stuff
+and here's a guide for things that I think would be harder to grasp:
+Your team section:
+so first of all, you need to go ingame, and change the name of a team to one of the things specified there, lets take burn for a example here.
+change team name to burn > in macro toggle on the burn > done! whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
+
+extra info:
+if you toggle None then it wont choose a team and pick sinners from top left to bottom right, if you choose multiple then it will cycle through them,
+Your team section is only for mirror dungeon, for exp and threads you should click enter on a thread/luxcavation then choose the team then go back to main menu, and activate the macro, the macro will keep using that team unless game has to reconnect due to network issues
+
+assign sinner to name section:
+so here you just pick whatever sinner you want to be chosen and in which order on which team, so if you do 1: Ishmael and 2: rodion on burn and 1: rodion 2: Ishmael on rupture then it will apply Ishmael first if you chosen burn and rodion first if you chosen rupture as your team
+
+number of runs:
+this just means how many times to complete, so mirror dungeon number of runs means how many times it does the 5 floors, so if you set 2 then it will complete 2 times/do 10 floors, for exp and threads it will do per run, I suggest putting this according to your enkephalin, so if you have 10 enkaphalin and you are gonna do mirror dungeon than type 2 in there. but use it however you want.
+
+for any bugs or issues please contact me on discord
+add me
+user: Kryxzort
+have fun macroing!
+(or sleep XD)
