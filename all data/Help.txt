@@ -16,6 +16,11 @@ so here you just pick whatever sinner you want to be chosen and in which order o
 number of runs:
 this just means how many times to complete, so mirror dungeon number of runs means how many times it does the 5 floors, so if you set 2 then it will complete 2 times/do 10 floors, for exp and threads it will do per run, I suggest putting this according to your enkephalin, so if you have 10 enkaphalin and you are gonna do mirror dungeon than type 2 in there. but use it however you want.
 
+graphics:
+make sure to be in fullscreen (alt+enter) ingame
+the modifications were built in max graphics
+you can try lower graphics and it might still work depending on how much did you lower it, but if anything is not working correctly then just do max graphics.
+
 call a function section:
 usually ignore this unless you are a advanced user
 used to call functions from any module
