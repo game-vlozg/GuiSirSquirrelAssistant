@@ -1,0 +1,40 @@
+[Settings]
+theme = Dark
+mirror_runs = 1
+exp_runs = 1
+exp_stage = 1
+threads_runs = 1
+threads_difficulty = 20
+window_width = 433
+window_height = 344
+filter_noise = True
+
+[LogFilters]
+debug = False
+info = False
+warning = True
+error = True
+critical = True
+
+[ModuleFilters]
+gui = True
+mirror_dungeon = True
+exp = True
+threads = True
+function = True
+common = True
+core = True
+mirror = True
+mirror_utils = True
+theme = True
+luxcavation = True
+other = True
+
+[Shortcuts]
+mirror_dungeon = ctrl+q
+exp = ctrl+e
+threads = ctrl+r
+battle = ctrl+t
+call_function = ctrl+g
+terminate_functions = ctrl+shift+g
+

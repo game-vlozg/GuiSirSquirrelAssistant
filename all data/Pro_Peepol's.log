@@ -1,0 +1,6 @@
+2025-05-19 18:47:10,830 - __main__ - DEBUG - Saved GUI configuration
+2025-05-19 18:47:10,830 - __main__ - INFO - GUI initialized
+2025-05-19 18:47:10,934 - __main__ - DEBUG - Loaded squad data from file
+2025-05-19 18:47:10,935 - __main__ - DEBUG - Saved slow squad data to file
+2025-05-19 18:47:11,603 - __main__ - DEBUG - Registered keyboard shortcuts: ctrl+q (Mirror), ctrl+e (Exp), ctrl+r (Threads), ctrl+t (Battle), ctrl+g (Call Function), ctrl+shift+g (Terminate Functions)
+2025-05-19 18:47:11,621 - __main__ - INFO - Loaded existing log file with filters applied
