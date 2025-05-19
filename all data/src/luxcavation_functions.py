@@ -326,15 +326,27 @@ def navigate_to_exp(Stage):
         # After squad selection:
         logger.info(f"Battle completed, checking for confirmation dialog")
         start_time = time.time()
+        common.mouse_move(200,200)
 
         while time.time() - start_time < 60:  # 60 second maximum check time
             if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
                 logger.info(f"Confirmation dialog found, clicking it")
                 common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+                common.mouse_move(200,200)
                 logger.info(f"clicked comfirm")
-                if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                    logger.info(f"not on confirm screen anymore, exitting loop")
-                    break
+            elif common.element_exist("pictures/general/confirm_w.png"):
+                logger.info(f"Manager Level Up")
+                common.click_matching("pictures/general/confirm_w.png")
+                time.sleep(0.5)
+                if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                    logger.info(f"Confirmation dialog found, clicking it")
+                    common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+                    common.mouse_move(200,200)
+                    logger.info(f"clicked comfirm")
+                    time.sleep(0.7)
+            if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                logger.info(f"not on confirm screen anymore, exitting loop")
+                break
             time.sleep(0.5)
             
         if time.time() - start_time >= 60:
@@ -420,15 +432,27 @@ def navigate_to_threads(Difficulty):
         # After squad selection and battle finished:
         logger.info(f"Battle completed, checking for confirmation dialog")
         start_time = time.time()
+        common.mouse_move(200,200)
 
         while time.time() - start_time < 60:  # 60 second maximum check time
             if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
                 logger.info(f"Confirmation dialog found, clicking it")
                 common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+                common.mouse_move(200,200)
                 logger.info(f"clicked comfirm")
-                if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                    logger.info(f"not on confirm screen anymore, exitting loop")
-                    break
+            elif common.element_exist("pictures/general/confirm_w.png"):
+                logger.info(f"Manager Level Up")
+                common.click_matching("pictures/general/confirm_w.png")
+                time.sleep(0.5)
+                if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                    logger.info(f"Confirmation dialog found, clicking it")
+                    common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+                    common.mouse_move(200,200)
+                    logger.info(f"clicked comfirm")
+                    time.sleep(0.7)
+            if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                logger.info(f"not on confirm screen anymore, exitting loop")
+                break
             time.sleep(0.5)
 
         if time.time() - start_time >= 60:
@@ -444,20 +468,27 @@ def navigate_to_threads(Difficulty):
         
     logger.info(f"Difficulty {Difficulty} navigation and battle complete")
 
-#def im_testing_so_hard_rn():
-#    if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-#        logger.info(f"Confirmation dialog found, clicking it")
-#        common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-#        logger.info(f"clicked comfirm")
-
 def im_testing_so_hard_rn():
         start_time = time.time()
+        common.mouse_move(200,200)
+
         while time.time() - start_time < 60:  # 60 second maximum check time
             if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                print("Confirmation dialog found, clicking it")
+                logger.info(f"Confirmation dialog found, clicking it")
                 common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                print("clicked comfirm")
+                common.mouse_move(200,200)
+                logger.info(f"clicked comfirm")
+            elif common.element_exist("pictures/general/confirm_w.png"):
+                logger.info(f"Manager Level Up")
+                common.click_matching("pictures/general/confirm_w.png")
+                time.sleep(0.5)
+                if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                    logger.info(f"Confirmation dialog found, clicking it")
+                    common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+                    common.mouse_move(200,200)
+                    logger.info(f"clicked comfirm")
+                    time.sleep(0.7)
+            if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                logger.info(f"not on confirm screen anymore, exitting loop")
                 break
-                
             time.sleep(0.5)
-            print("omg i slept zzzzzzzz")

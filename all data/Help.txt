@@ -1,6 +1,7 @@
 hello!
 just walk through the tabs and read and you'll understand most of the stuff
 and here's a guide for things that I think would be harder to grasp:
+
 Your team section:
 so first of all, you need to go ingame, and change the name of a team to one of the things specified there, lets take burn for a example here.
 change team name to burn > in macro toggle on the burn > done! whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
