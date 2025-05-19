@@ -47,6 +47,7 @@ MIRROR_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "compiled_runner.py")
 EXP_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "exp_runner.py")
 THREADS_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "threads_runner.py")
 THEME_RESTART_PATH = os.path.join(BASE_PATH, "src", "theme_restart.py")
+FUNCTION_RUNNER_PATH = os.path.join(BASE_PATH, "src", "function_runner.py")
 
 # Configuration file paths
 CONFIG_DIR = os.path.join(BASE_PATH, "config")
@@ -92,6 +93,7 @@ LOG_MODULES = {
     "Mirror Dungeon": "compiled_runner",
     "Exp": "exp_runner",
     "Threads": "threads_runner",
+    "Function": "function_runner",
     "Common": "common",
     "Core": "core",
     "Mirror": "mirror",
@@ -111,6 +113,7 @@ FILTERED_MESSAGES = [
     "Mirror Dungeon tab setup complete",
     "Exp tab setup complete",
     "Threads tab setup complete",
+    "Others tab setup complete",
     "Settings tab setup complete",
     "Help tab setup complete",
     "Logs tab setup complete",
@@ -120,7 +123,7 @@ FILTERED_MESSAGES = [
     "Application closed",
     "Loaded squad data from file",
     "Saved slow squad data to file",
-    "Registered keyboard shortcuts: ctrl+q (Mirror), ctrl+e (Exp), ctrl+r (Threads)"
+    "Registered keyboard shortcuts: ctrl+q (Mirror), ctrl+e (Exp), ctrl+r (Threads), ctrl+t (Battle)"
 ]
 
 # Available themes for the UI - USING ONLY VALIDATED THEMES THAT EXIST
@@ -161,6 +164,8 @@ expand_frames = {}
 process = None
 exp_process = None
 threads_process = None
+function_process = None
+function_process_list = []  # List to track multiple function processes
 filtered_messages_enabled = True
 
 # Helper function for character name normalization
@@ -215,7 +220,8 @@ def load_initial_selections():
 # Process state checking functions
 def is_any_process_running():
     """Check if any automation is currently running"""
-    return process is not None or exp_process is not None or threads_process is not None
+    return (process is not None or exp_process is not None or 
+            threads_process is not None)
 
 def get_running_process_name():
     """Get the name of the currently running process"""
@@ -264,11 +270,14 @@ def load_gui_config():
     for module in LOG_MODULES:
         module_filter_defaults[module.lower().replace(' ', '_')] = 'True'
     
-    # Default keyboard shortcut values
+            # Default keyboard shortcut values
     shortcut_defaults = {
         'mirror_dungeon': 'ctrl+q',
         'exp': 'ctrl+e',
-        'threads': 'ctrl+r'
+        'threads': 'ctrl+r',
+        'battle': 'ctrl+t',
+        'call_function': 'ctrl+g',
+        'terminate_functions': 'ctrl+shift+g'
     }
     
     # See if the file exists and load it
@@ -365,7 +374,10 @@ def save_gui_config(config=None):
         config['Shortcuts'] = {
             'mirror_dungeon': shortcut_vars['mirror_dungeon'].get(),
             'exp': shortcut_vars['exp'].get(),
-            'threads': shortcut_vars['threads'].get()
+            'threads': shortcut_vars['threads'].get(),
+            'battle': shortcut_vars['battle'].get(),
+            'call_function': shortcut_vars['call_function'].get(),
+            'terminate_functions': shortcut_vars['terminate_functions'].get()
         }
     
     try:
@@ -398,7 +410,10 @@ for module in LOG_MODULES:
 shortcut_vars = {
     'mirror_dungeon': ctk.StringVar(value=config['Shortcuts'].get('mirror_dungeon', 'ctrl+q')),
     'exp': ctk.StringVar(value=config['Shortcuts'].get('exp', 'ctrl+e')),
-    'threads': ctk.StringVar(value=config['Shortcuts'].get('threads', 'ctrl+r'))
+    'threads': ctk.StringVar(value=config['Shortcuts'].get('threads', 'ctrl+r')),
+    'battle': ctk.StringVar(value=config['Shortcuts'].get('battle', 'ctrl+t')),
+    'call_function': ctk.StringVar(value=config['Shortcuts'].get('call_function', 'ctrl+g')),
+    'terminate_functions': ctk.StringVar(value=config['Shortcuts'].get('terminate_functions', 'ctrl+shift+g'))
 }
 
 # Custom logging handler for displaying logs in the GUI
@@ -745,6 +760,30 @@ def kill_threads_bot():
         threads_process = None
     threads_start_button.configure(text="Start")
 
+def kill_function_runner():
+    """Kill Function Runner subprocess"""
+    global function_process, function_process_list
+    if function_process:
+        try:
+            os.kill(function_process.pid, signal.SIGTERM)
+            info(f"Terminated Function Runner process (PID: {function_process.pid})")
+        except Exception as e:
+            error(f"Failed to kill function runner process: {e}")
+        function_process = None
+    
+    # Also terminate any processes in the list
+    for proc in function_process_list[:]:  # Use a copy of the list for iteration
+        try:
+            if proc and proc.poll() is None:  # Check if process is still running
+                os.kill(proc.pid, signal.SIGTERM)
+                info(f"Terminated Function Runner process (PID: {proc.pid})")
+        except Exception as e:
+            error(f"Failed to kill function runner process: {e}")
+        
+        # Remove from list
+        if proc in function_process_list:
+            function_process_list.remove(proc)
+
 # Process start functions
 def start_run():
     """Start Mirror Dungeon automation"""
@@ -891,6 +930,114 @@ def start_threads_run():
         error(f"Failed to start Threads process: {e}")
         messagebox.showerror("Error", f"Failed to start Threads automation: {e}")
 
+def call_function():
+    """Call a function using function_runner.py"""
+    global function_process, function_process_list
+    
+    # Get the function to call
+    function_name = function_entry.get().strip()
+    if not function_name:
+        messagebox.showerror("Invalid Input", "Please enter a function to call.")
+        warning("Empty function name provided")
+        return
+    
+    # Ensure the function_runner script path is correct or create it if it doesn't exist
+    if not os.path.exists(FUNCTION_RUNNER_PATH):
+        warning(f"Function runner script not found at: {FUNCTION_RUNNER_PATH}, will create it")
+        try:
+            # Create the script with basic functionality
+            os.makedirs(os.path.dirname(FUNCTION_RUNNER_PATH), exist_ok=True)
+            with open(FUNCTION_RUNNER_PATH, 'w') as f:
+                # We'll replace this with the updated script content that handles arguments
+                pass
+        except Exception as e:
+            error(f"Failed to create function_runner.py: {e}")
+            messagebox.showerror("Error", f"Failed to create function_runner.py: {e}")
+            return
+    
+    try:
+        # Create an environment with the correct paths
+        env = os.environ.copy()
+        env['PYTHONPATH'] = os.pathsep.join([BASE_PATH, os.path.join(BASE_PATH, 'src')])
+        
+        # Launch with the appropriate command
+        if getattr(sys, 'frozen', False):
+            # If frozen (exe), launch the script using the bundled Python
+            new_process = subprocess.Popen(
+                [PYTHON_CMD, "-m", "src.function_runner", function_name, "--listen-stdin"],
+                env=env
+            )
+        else:
+            # If script, use the regular Python command
+            new_process = subprocess.Popen(
+                [sys.executable, FUNCTION_RUNNER_PATH, function_name, "--listen-stdin"],
+                env=env
+            )
+        
+        # Add to the list of function processes
+        function_process_list.append(new_process)
+        function_terminate_button.configure(state="normal")
+        info(f"Called function: {function_name} (PID: {new_process.pid})")
+        
+    except Exception as e:
+        error(f"Failed to call function: {e}")
+        messagebox.showerror("Error", f"Failed to call function: {e}")
+
+def start_battle():
+    """Start a battle directly using mirror.battle()"""
+    # Find any existing battle processes
+    global function_process_list
+    
+    # Check if there's already a mirror.battle running
+    for proc in function_process_list[:]:
+        # We have no direct way to know which process is mirror.battle
+        # So we'll terminate the most recent function call if the shortcut is pressed again
+        if proc and proc.poll() is None:  # Process is still running
+            try:
+                os.kill(proc.pid, signal.SIGTERM)
+                info(f"Terminated function process (PID: {proc.pid}) via battle shortcut")
+                function_process_list.remove(proc)
+                return
+            except Exception as e:
+                error(f"Failed to kill process: {e}")
+    
+    # No processes running or couldn't terminate any, start a new battle
+    try:
+        # Create environment variables with correct paths
+        env = os.environ.copy()
+        env['PYTHONPATH'] = os.pathsep.join([BASE_PATH, os.path.join(BASE_PATH, 'src')])
+        
+        # Launch with the appropriate command
+        if getattr(sys, 'frozen', False):
+            # If frozen (exe), launch the script using the bundled Python
+            battle_process = subprocess.Popen(
+                [PYTHON_CMD, "-m", "src.function_runner", "mirror.battle"],
+                env=env
+            )
+        else:
+            # If script, use the regular Python command
+            battle_process = subprocess.Popen(
+                [sys.executable, FUNCTION_RUNNER_PATH, "mirror.battle"],
+                env=env
+            )
+        
+        # Track this process
+        function_process_list.append(battle_process)
+        info(f"Started battle via keyboard shortcut (PID: {battle_process.pid})")
+        
+    except Exception as e:
+        error(f"Failed to start battle: {e}")
+        messagebox.showerror("Error", f"Failed to start battle: {e}")
+
+def call_function_shortcut():
+    """Trigger the call function button via keyboard shortcut"""
+    call_function()
+    
+def terminate_functions_shortcut():
+    """Terminate all function processes via keyboard shortcut"""
+    kill_function_runner()
+    info("Terminated all function processes via keyboard shortcut")
+
 # Button toggle functions
 def toggle_button():
     """Toggle Mirror Dungeon button state"""
@@ -912,6 +1059,13 @@ def toggle_threads_button():
         start_threads_run()
     else:
         kill_threads_bot()
+
+def toggle_function_button():
+    """Toggle Function button state"""
+    if function_call_button.cget("text") == "Call":
+        call_function()
+    else:
+        kill_function_runner()
 
 # Theme application function
 def apply_theme():
@@ -949,9 +1103,14 @@ def register_keyboard_shortcuts():
         keyboard.add_hotkey(shortcut_vars['mirror_dungeon'].get(), toggle_button)
         keyboard.add_hotkey(shortcut_vars['exp'].get(), toggle_exp_button)
         keyboard.add_hotkey(shortcut_vars['threads'].get(), toggle_threads_button)
+        keyboard.add_hotkey(shortcut_vars['battle'].get(), start_battle)
+        keyboard.add_hotkey(shortcut_vars['call_function'].get(), call_function_shortcut)
+        keyboard.add_hotkey(shortcut_vars['terminate_functions'].get(), terminate_functions_shortcut)
         
         debug(f"Registered keyboard shortcuts: {shortcut_vars['mirror_dungeon'].get()} (Mirror), "
-              f"{shortcut_vars['exp'].get()} (Exp), {shortcut_vars['threads'].get()} (Threads)")
+              f"{shortcut_vars['exp'].get()} (Exp), {shortcut_vars['threads'].get()} (Threads), "
+              f"{shortcut_vars['battle'].get()} (Battle), {shortcut_vars['call_function'].get()} (Call Function), "
+              f"{shortcut_vars['terminate_functions'].get()} (Terminate Functions)")
     except Exception as e:
         error(f"Error registering keyboard shortcuts: {e}")
         messagebox.showerror("Invalid Shortcut", f"Failed to register shortcuts: {e}\nPlease check your shortcut format.")
@@ -971,7 +1130,7 @@ window_width = config['Settings'].getint('window_width', 433)
 window_height = config['Settings'].getint('window_height', 344)
 root.geometry(f"{window_width}x{window_height}")
 
-# Performance improvement: Disable complex logging at startup
+    # Performance improvement: Disable complex logging at startup
 info("GUI initialized")
 
 # Tab layout
@@ -982,6 +1141,7 @@ tabs.pack(padx=20, pady=20, fill="both", expand=True)
 tab_md = tabs.add("Mirror Dungeon")
 tab_exp = tabs.add("Exp")
 tab_threads = tabs.add("Threads")
+tab_others = tabs.add("Others")  # Add the new "Others" tab
 tab_settings = tabs.add("Settings")
 tab_help = tabs.add("Help")
 tab_logs = tabs.add("Logs")
@@ -1049,6 +1209,36 @@ threads_difficulty_dropdown.pack(pady=(0, 15))
 
 threads_start_button = ctk.CTkButton(threads_scroll, text="Start", command=start_threads_run)
 threads_start_button.pack(pady=(0, 15))
+
+# Setting up the Others tab
+others_scroll = ctk.CTkScrollableFrame(master=tab_others)
+others_scroll.pack(fill="both", expand=True)
+
+ctk.CTkLabel(others_scroll, text="Call a function:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+function_entry = ctk.CTkEntry(others_scroll, width=300)
+function_entry.pack(pady=(0, 5))
+
+# Help text for function call
+function_help = ctk.CTkLabel(
+    others_scroll, 
+    text="Type any function from any module, e.g., mirror.battle or time.sleep(1)", 
+    font=ctk.CTkFont(size=12), 
+    text_color="gray"
+)
+function_help.pack(pady=(0, 10))
+
+# Buttons for function control
+function_call_button = ctk.CTkButton(others_scroll, text="Call", command=call_function, width=150)
+function_call_button.pack(pady=(0, 5))
+
+function_terminate_button = ctk.CTkButton(
+    others_scroll, 
+    text="Terminate All", 
+    command=kill_function_runner, 
+    width=150,
+    state="disabled"  # Initially disabled until a function is called
+)
+function_terminate_button.pack(pady=(0, 15))
 
 # Setting up the Settings tab
 settings_scroll = ctk.CTkScrollableFrame(master=tab_settings)
@@ -1201,6 +1391,33 @@ threads_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['
 threads_shortcut_entry.pack(side="left", padx=(0, 10))
 ctk.CTkButton(shortcut_row, text="Apply", width=60, 
               command=lambda: update_shortcut('threads')).pack(side="left")
+
+# Start Battle shortcut
+shortcut_row = ctk.CTkFrame(shortcuts_frame)
+shortcut_row.pack(fill="x", pady=5)
+ctk.CTkLabel(shortcut_row, text="Start Battle:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+battle_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['battle'], width=100)
+battle_shortcut_entry.pack(side="left", padx=(0, 10))
+ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+              command=lambda: update_shortcut('battle')).pack(side="left")
+
+# Call Function shortcut
+shortcut_row = ctk.CTkFrame(shortcuts_frame)
+shortcut_row.pack(fill="x", pady=5)
+ctk.CTkLabel(shortcut_row, text="Call Function:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+call_function_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['call_function'], width=100)
+call_function_shortcut_entry.pack(side="left", padx=(0, 10))
+ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+              command=lambda: update_shortcut('call_function')).pack(side="left")
+
+# Terminate Functions shortcut
+shortcut_row = ctk.CTkFrame(shortcuts_frame)
+shortcut_row.pack(fill="x", pady=5)
+ctk.CTkLabel(shortcut_row, text="Terminate Functions:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+terminate_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['terminate_functions'], width=100)
+terminate_shortcut_entry.pack(side="left", padx=(0, 10))
+ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+              command=lambda: update_shortcut('terminate_functions')).pack(side="left")
 
 # Help text for keyboard shortcuts
 shortcut_help = ctk.CTkLabel(shortcuts_frame, text="Format examples: ctrl+q, alt+s, shift+x", 
@@ -1425,7 +1642,7 @@ register_keyboard_shortcuts()
 # Process monitoring function
 def check_processes():
     """Check if processes are still running and update UI accordingly"""
-    global process, exp_process, threads_process
+    global process, exp_process, threads_process, function_process_list
     
     # Check Mirror Dungeon process
     if process is not None:
@@ -1451,6 +1668,20 @@ def check_processes():
             threads_process = None
             threads_start_button.configure(text="Start")
     
+    # Check Function Runner processes
+    for proc in function_process_list[:]:  # Use a copy of the list for iteration
+        if proc.poll() is not None:
+            # Process has ended
+            info(f"Function Runner process ended with code: {proc.returncode}")
+            # Remove from list
+            function_process_list.remove(proc)
+    
+    # Update terminate button state based on whether any function processes are running
+    if function_process_list:
+        function_terminate_button.configure(state="normal")
+    else:
+        function_terminate_button.configure(state="disabled")
+    
     # Schedule next check
     root.after(1000, check_processes)
 
@@ -1475,6 +1706,9 @@ def on_closing():
         kill_exp_bot()
     if threads_process:
         kill_threads_bot()
+    
+    # Terminate all function processes
+    kill_function_runner()
         
     root.destroy()
 

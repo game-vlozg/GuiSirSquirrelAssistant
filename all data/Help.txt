@@ -4,7 +4,7 @@ and here's a guide for things that I think would be harder to grasp:
 
 Your team section:
 so first of all, you need to go ingame, and change the name of a team to one of the things specified there, lets take burn for a example here.
-change team name to burn > in macro toggle on the burn > done! whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
+change team name to burn(if confusing refer to instructions images folder inside the all data folder) > in macro toggle on the burn > done! whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
 
 extra info:
 if you toggle None then it wont choose a team and pick sinners from top left to bottom right, if you choose multiple then it will cycle through them, when choosing gifts and packs and you have none then it will use poise.
@@ -15,6 +15,12 @@ so here you just pick whatever sinner you want to be chosen and in which order o
 
 number of runs:
 this just means how many times to complete, so mirror dungeon number of runs means how many times it does the 5 floors, so if you set 2 then it will complete 2 times/do 10 floors, for exp and threads it will do per run, I suggest putting this according to your enkephalin, so if you have 10 enkaphalin and you are gonna do mirror dungeon than type 2 in there. but use it however you want.
+
+call a function section:
+usually ignore this unless you are a advanced user
+used to call functions from any module
+if you wanna call battle() function from the mirror module, type mirror.battle()
+was put in for my testing and stuff
 
 make sure to be in fullscreen (alt+enter) ingame
 
