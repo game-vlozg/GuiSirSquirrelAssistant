@@ -32,13 +32,13 @@
         "faust": 2,
         "donquixote": 3,
         "ryoshu": 4,
-        "outis": 5,
-        "heathcliff": 6,
-        "honglu": 7,
         "meursault": 8,
+        "honglu": 7,
+        "heathcliff": 6,
+        "ishmael": 11,
         "rodion": 9,
         "sinclair": 10,
-        "ishmael": 11,
+        "outis": 5,
         "gregor": 12
     },
     "sinking": {
@@ -70,18 +70,18 @@
         "gregor": 8
     },
     "burn": {
+        "yisang": 6,
+        "faust": 11,
+        "donquixote": 12,
+        "ryoshu":5,
+        "meursault": 7,
+        "honglu": 8,
+        "heathcliff": 10,
         "ishmael": 1,
         "rodion": 2,
         "sinclair": 3,
-        "donquixote": 4,
-        "outis": 5,
-        "yisang": 6,
-        "meursault": 7,
-        "heathcliff": 8,
-        "faust": 9,
-        "honglu": 10,
-        "ryoshu": 11,
-        "gregor": 12
+        "outis": 4,
+        "gregor": 9
     },
     "bleed": {
         "yisang": 6,
