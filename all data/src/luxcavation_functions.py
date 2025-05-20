@@ -342,6 +342,14 @@ def navigate_to_exp(Stage):
     # Handle failure by going back and retrying
     if not success:
         logger.warning(f"Failed to click Stage {Stage}, retrying")
+        if common.element_exist("pictures/battle/winrate.png"):
+            logger.info(f"Battle screen detected, entering battle")
+            mirror.battle()
+            logger.info(f"Battle completed, checking for confirmation dialog")
+            click_continue()
+            logger.info(f"Exp Stage {Stage} navigation and battle complete")
+            return
+
         common.click_matching("pictures/CustomAdded1080p/general/goback.png")
         navigate_to_exp(Stage)
         return
