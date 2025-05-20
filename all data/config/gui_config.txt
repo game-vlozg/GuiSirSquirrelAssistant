@@ -1,17 +1,17 @@
 [Settings]
 theme = Dark
-mirror_runs = 1
-exp_runs = 1
-exp_stage = 1
-threads_runs = 1
-threads_difficulty = 20
-window_width = 433
-window_height = 344
+mirror_runs = 40
+exp_runs = 40
+exp_stage = 3
+threads_runs = 50
+threads_difficulty = 30
+window_width = 592
+window_height = 469
 filter_noise = True
 
 [LogFilters]
-debug = False
-info = False
+debug = True
+info = True
 warning = True
 error = True
 critical = True

@@ -153,6 +153,38 @@ def click_matching_EXP(image_path, threshold=0.8, area="center", movewidth=0, mo
     logger.warning(f"All attempts to find {os.path.basename(image_path)} failed")
     return False
 
+def click_continue():
+    start_time = time.time()
+    common.mouse_move(200,200)
+
+    continue_clicked = False
+
+    while time.time() - start_time < 60:  # 60 second maximum check time
+        if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+            logger.info(f"Confirmation dialog found, clicking it")
+            common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+            common.mouse_move(200,200)
+            logger.info(f"clicked comfirm")
+            continue_clicked = True
+        elif common.element_exist("pictures/general/confirm_w.png"):
+            logger.info(f"Manager Level Up")
+            common.click_matching("pictures/general/confirm_w.png")
+            time.sleep(0.5)
+            if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
+                logger.info(f"Confirmation dialog found, clicking it")
+                common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
+                common.mouse_move(200,200)
+                logger.info(f"clicked comfirm")
+                continue_clicked = True
+                time.sleep(0.7)
+        if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png") and continue_clicked:
+            logger.info(f"not on confirm screen anymore, exitting loop")
+            break
+        time.sleep(0.5)
+            
+    if time.time() - start_time >= 60:
+        logger.debug(f"No confirmation dialog detected within timeout period")
+
 def squad_select_lux(mirror_instance):
     """
     Select squad members and initiate battle.
@@ -316,7 +348,7 @@ def navigate_to_exp(Stage):
     
     # Add a delay to allow UI to settle after successful click
     logger.debug(f"Click successful, waiting for UI to settle...")
-    time.sleep(1.5)  # Wait 1.5 seconds for UI transition
+    time.sleep(0.5)  # Wait 0.5 seconds for UI transition
     
     # Check if we're in squad select
     if common.element_exist("pictures/mirror/general/squad_select.png"):
@@ -325,32 +357,7 @@ def navigate_to_exp(Stage):
         
         # After squad selection:
         logger.info(f"Battle completed, checking for confirmation dialog")
-        start_time = time.time()
-        common.mouse_move(200,200)
-
-        while time.time() - start_time < 60:  # 60 second maximum check time
-            if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                logger.info(f"Confirmation dialog found, clicking it")
-                common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                common.mouse_move(200,200)
-                logger.info(f"clicked comfirm")
-            elif common.element_exist("pictures/general/confirm_w.png"):
-                logger.info(f"Manager Level Up")
-                common.click_matching("pictures/general/confirm_w.png")
-                time.sleep(0.5)
-                if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                    logger.info(f"Confirmation dialog found, clicking it")
-                    common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                    common.mouse_move(200,200)
-                    logger.info(f"clicked comfirm")
-                    time.sleep(0.7)
-            if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                logger.info(f"not on confirm screen anymore, exitting loop")
-                break
-            time.sleep(0.5)
-            
-        if time.time() - start_time >= 60:
-            logger.debug(f"No confirmation dialog detected within timeout period")
+        click_continue()
 
     else:
         logger.warning(f"Squad select screen not detected, retrying")
@@ -423,7 +430,7 @@ def navigate_to_threads(Difficulty):
         common.click_matching(difficulty_image, 0.95, area="center", mousegoto200="0")
         
     logger.debug(f"Click successful, waiting for UI to settle...")
-    time.sleep(1.5)  # Wait 1.5 seconds for UI transition
+    time.sleep(0.5)  # Wait 0.5 seconds for UI transition
         
     if common.element_exist("pictures/mirror/general/squad_select.png"):
         logger.info(f"Squad select screen detected")
@@ -431,32 +438,7 @@ def navigate_to_threads(Difficulty):
             
         # After squad selection and battle finished:
         logger.info(f"Battle completed, checking for confirmation dialog")
-        start_time = time.time()
-        common.mouse_move(200,200)
-
-        while time.time() - start_time < 60:  # 60 second maximum check time
-            if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                logger.info(f"Confirmation dialog found, clicking it")
-                common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                common.mouse_move(200,200)
-                logger.info(f"clicked comfirm")
-            elif common.element_exist("pictures/general/confirm_w.png"):
-                logger.info(f"Manager Level Up")
-                common.click_matching("pictures/general/confirm_w.png")
-                time.sleep(0.5)
-                if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                    logger.info(f"Confirmation dialog found, clicking it")
-                    common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                    common.mouse_move(200,200)
-                    logger.info(f"clicked comfirm")
-                    time.sleep(0.7)
-            if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                logger.info(f"not on confirm screen anymore, exitting loop")
-                break
-            time.sleep(0.5)
-
-        if time.time() - start_time >= 60:
-            logger.debug(f"No confirmation dialog detected within timeout period")
+        click_continue()
 
     else:
         logger.warning(f"Squad select screen not detected, retrying")
@@ -467,28 +449,3 @@ def navigate_to_threads(Difficulty):
         return
         
     logger.info(f"Difficulty {Difficulty} navigation and battle complete")
-
-def im_testing_so_hard_rn():
-        start_time = time.time()
-        common.mouse_move(200,200)
-
-        while time.time() - start_time < 60:  # 60 second maximum check time
-            if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                logger.info(f"Confirmation dialog found, clicking it")
-                common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                common.mouse_move(200,200)
-                logger.info(f"clicked comfirm")
-            elif common.element_exist("pictures/general/confirm_w.png"):
-                logger.info(f"Manager Level Up")
-                common.click_matching("pictures/general/confirm_w.png")
-                time.sleep(0.5)
-                if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                    logger.info(f"Confirmation dialog found, clicking it")
-                    common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
-                    common.mouse_move(200,200)
-                    logger.info(f"clicked comfirm")
-                    time.sleep(0.7)
-            if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
-                logger.info(f"not on confirm screen anymore, exitting loop")
-                break
-            time.sleep(0.5)
