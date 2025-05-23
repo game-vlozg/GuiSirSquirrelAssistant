@@ -355,7 +355,7 @@ def load_gui_config():
         'auto_update': 'False',
         'create_backups': 'True',
         'update_notifications': 'True',
-        'kill_processes_on_exit': 'False',
+        'kill_processes_on_exit': 'True',
         'chain_threads_runs': '3',  # Default chain values
         'chain_exp_runs': '2',      # Default chain values
         'chain_mirror_runs': '1'    # Default chain values
