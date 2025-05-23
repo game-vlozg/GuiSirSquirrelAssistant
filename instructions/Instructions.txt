@@ -1,0 +1,5 @@
+go to https://www.python.org/downloads/ and download python, you can also install through Microsoft store if you want.
+after that if this is your first time using this macro or you are having issues, run "Run me if 1st time installed.bat"
+that will install the items the macro needs to operate.
+after that click "Run macro.bat"
+that will run it, after that you can head over to the help section to learn more about how to operate the macro

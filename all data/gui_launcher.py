@@ -14,28 +14,63 @@ import queue
 from threading import Thread
 import configparser
 import re
+import webbrowser
 
-# Determine if running as executable or script
-def get_base_path():
+DISCORD_INVITE = "https://discord.gg/AmN2jYdfZX"
+def join_discord():
+    webbrowser.open(DISCORD_INVITE)
+
+# =====================================================================
+# PATH HANDLING - IMPROVED DIRECTORY STRUCTURE DETECTION
+# =====================================================================
+
+def get_correct_base_path():
+    """Get the correct base path for the application with smart directory detection"""
     if getattr(sys, 'frozen', False):
         # Running as compiled exe
-        return os.path.dirname(sys.executable)
+        base = os.path.dirname(sys.executable)
     else:
         # Running as script
-        return os.path.dirname(os.path.abspath(__file__))
+        base = os.path.dirname(os.path.abspath(__file__))
+        
+    # Smart directory detection
+    if os.path.basename(base) == "src":
+        # We're in src folder inside all data
+        all_data_dir = os.path.dirname(base)  # Go up 1 level to all data
+        main_dir = os.path.dirname(all_data_dir)  # Go up 1 more level
+    elif os.path.basename(base) == "all data":
+        # We're directly in the all data folder
+        all_data_dir = base
+        main_dir = os.path.dirname(base)
+    else:
+        # We're in the main directory
+        all_data_dir = os.path.join(base, "all data")
+        main_dir = base
+        
+    return main_dir, all_data_dir
 
-# Setting up file and directory paths using the base path
-BASE_PATH = get_base_path()
+# Get correct paths
+MAIN_DIR, ALL_DATA_DIR = get_correct_base_path()
+BASE_PATH = ALL_DATA_DIR  # Set BASE_PATH to "all data" folder
+
+# Add src to Python path for imports
 sys.path.append(os.path.join(BASE_PATH, 'src'))
+
+# Try to import the updater module
+try:
+    from src.updater import check_for_updates, auto_update
+    UPDATER_AVAILABLE = True
+except ImportError:
+    UPDATER_AVAILABLE = False
 
 # Define python interpreter path based on whether we're frozen or not
 def get_python_command():
     if getattr(sys, 'frozen', False):
         # If running as exe, use the executable path to launch Python modules
         if platform.system() == "Windows":
-            return os.path.join(BASE_PATH, "gui_launcher.exe")
+            return os.path.join(MAIN_DIR, "gui_launcher.exe")
         else:
-            return os.path.join(BASE_PATH, "gui_launcher")
+            return os.path.join(MAIN_DIR, "gui_launcher")
     else:
         # If running as script, use system's Python interpreter
         return sys.executable
@@ -48,6 +83,7 @@ EXP_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "exp_runner.py")
 THREADS_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "threads_runner.py")
 THEME_RESTART_PATH = os.path.join(BASE_PATH, "src", "theme_restart.py")
 FUNCTION_RUNNER_PATH = os.path.join(BASE_PATH, "src", "function_runner.py")
+BATTLER_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "battler.py")
 
 # Configuration file paths
 CONFIG_DIR = os.path.join(BASE_PATH, "config")
@@ -69,7 +105,12 @@ logging.basicConfig(
         logging.FileHandler(LOG_FILENAME)
     ]
 )
-logger = logging.getLogger(__name__)
+# Use "GUI" directly instead of __name__
+logger = logging.getLogger("GUI")
+
+# =====================================================================
+# LOGGING HELPERS
+# =====================================================================
 
 # Convenience functions for different log levels
 def debug(message):
@@ -89,7 +130,7 @@ def critical(message):
 
 # Module names for log filtering
 LOG_MODULES = {
-    "GUI": "__main__",
+    "GUI": "GUI",  # Changed from __main__ to GUI
     "Mirror Dungeon": "compiled_runner",
     "Exp": "exp_runner",
     "Threads": "threads_runner",
@@ -105,9 +146,7 @@ LOG_MODULES = {
 
 # List of log messages to filter out (noise reduction)
 FILTERED_MESSAGES = [
-    "Saved GUI configuration",
     "Loaded existing log file with filters applied",
-    "Log file cleared",
     "GUI initialized",
     "Created tab layout with all tabs",
     "Mirror Dungeon tab setup complete",
@@ -125,6 +164,10 @@ FILTERED_MESSAGES = [
     "Saved slow squad data to file",
     "Registered keyboard shortcuts: ctrl+q (Mirror), ctrl+e (Exp), ctrl+r (Threads), ctrl+t (Battle)"
 ]
+
+# =====================================================================
+# GLOBAL CONSTANTS
+# =====================================================================
 
 # Available themes for the UI - USING ONLY VALIDATED THEMES THAT EXIST
 THEMES = {
@@ -155,6 +198,10 @@ TEAM_ORDER = [
     ("pierce", 3, 0), ("None", 3, 1)
 ]
 
+# =====================================================================
+# GLOBAL VARIABLES
+# =====================================================================
+
 # Global variables for data storage and state tracking
 squad_data = {}
 slow_squad_data = {}
@@ -166,7 +213,33 @@ exp_process = None
 threads_process = None
 function_process = None
 function_process_list = []  # List to track multiple function processes
+battle_process = None
 filtered_messages_enabled = True
+is_update_available = False  # Track if updates are available
+
+# Chain automation variables
+chain_running = False
+chain_queue = []
+current_chain_step = 0
+
+# Lazy loading flags
+settings_tab_loaded = False
+logs_tab_loaded = False
+
+# =====================================================================
+# HELPER FUNCTIONS
+# =====================================================================
+
+# Shared error handling decorator
+def safe_execute(func):
+    """Decorator for consistent error handling"""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            error(f"Error in {func.__name__}: {e}")
+            return None
+    return wrapper
 
 # Helper function for character name normalization
 def sinner_key(name):
@@ -174,6 +247,7 @@ def sinner_key(name):
     return name.lower().replace(" ", "").replace("ō", "o").replace("ū", "u")
 
 # Functions for JSON data management
+@safe_execute
 def load_json():
     """Load squad data from JSON files"""
     global squad_data, slow_squad_data
@@ -188,12 +262,14 @@ def load_json():
     slow_squad_data = json.loads(json.dumps(squad_data))
     save_slow_json()
 
+@safe_execute
 def save_json():
     """Save squad data to JSON file"""
     with open(JSON_PATH, "w") as f:
         json.dump(squad_data, f, indent=4)
     debug("Saved squad data to file")
 
+@safe_execute
 def save_slow_json():
     """Save slow squad data to JSON file"""
     with open(SLOW_JSON_PATH, "w") as f:
@@ -202,12 +278,16 @@ def save_slow_json():
 
 def delayed_slow_sync():
     """Sync squad data to slow squad with delay"""
-    time.sleep(0.5)
-    slow_squad_data.update(json.loads(json.dumps(squad_data)))
-    save_slow_json()
-    debug("Updated slow squad data after delay")
+    try:
+        time.sleep(0.5)
+        slow_squad_data.update(json.loads(json.dumps(squad_data)))
+        save_slow_json()
+        debug("Updated slow squad data after delay")
+    except Exception as e:
+        error(f"Error syncing slow squad data: {e}")
 
 # Functions for status selection management
+@safe_execute
 def load_initial_selections():
     """Load previously selected checkboxes"""
     try:
@@ -221,10 +301,12 @@ def load_initial_selections():
 def is_any_process_running():
     """Check if any automation is currently running"""
     return (process is not None or exp_process is not None or 
-            threads_process is not None)
+            threads_process is not None or chain_running)
 
 def get_running_process_name():
     """Get the name of the currently running process"""
+    if chain_running:
+        return "Chain Automation"
     if process is not None:
         return "Mirror Dungeon"
     if exp_process is not None:
@@ -233,17 +315,31 @@ def get_running_process_name():
         return "Threads"
     return None
 
+# Shared process conflict check
+def check_process_conflict(process_name):
+    """Check if another process is running and show warning"""
+    if is_any_process_running():
+        running_name = get_running_process_name()
+        warning(f"Cannot start {process_name} while {running_name} is running")
+        return True
+    return False
+
+# =====================================================================
+# CONFIGURATION MANAGEMENT
+# =====================================================================
+
 # Initialize the main application window
 root = ctk.CTk()
 root.geometry("433x344")  # Default window size
 root.title("Pro Peepol Macro😎")
+original_title = root.title()  # Store original title for later restoration
 
 # Configuration management functions
 def load_gui_config():
-    """Load GUI configuration from file"""
+    """Load GUI configuration from file with improved error handling and optimized validation"""
     config = configparser.ConfigParser()
     
-    # Default values
+    # Default values - only what's actually needed
     defaults = {
         'theme': 'Dark',
         'mirror_runs': '1',
@@ -253,7 +349,16 @@ def load_gui_config():
         'threads_difficulty': '20',
         'window_width': '433',
         'window_height': '344',
-        'filter_noise': 'True'
+        'filter_noise': 'True',
+        'github_owner': 'Kryxzort',
+        'github_repo': 'GuiSirSquirrelAssistant',
+        'auto_update': 'False',
+        'create_backups': 'True',
+        'update_notifications': 'True',
+        'kill_processes_on_exit': 'False',
+        'chain_threads_runs': '3',  # Default chain values
+        'chain_exp_runs': '2',      # Default chain values
+        'chain_mirror_runs': '1'    # Default chain values
     }
     
     # Default log filter values
@@ -270,120 +375,158 @@ def load_gui_config():
     for module in LOG_MODULES:
         module_filter_defaults[module.lower().replace(' ', '_')] = 'True'
     
-            # Default keyboard shortcut values
+    # Default keyboard shortcut values
     shortcut_defaults = {
         'mirror_dungeon': 'ctrl+q',
         'exp': 'ctrl+e',
         'threads': 'ctrl+r',
         'battle': 'ctrl+t',
         'call_function': 'ctrl+g',
-        'terminate_functions': 'ctrl+shift+g'
+        'terminate_functions': 'ctrl+shift+g',
+        'chain_automation': 'ctrl+b'
     }
     
-    # See if the file exists and load it
+    # Load config file if it exists
+    config_needs_save = False
+    
     if os.path.exists(GUI_CONFIG_PATH):
         try:
             config.read(GUI_CONFIG_PATH)
-            if 'Settings' not in config:
-                config['Settings'] = {}
-            
-            # Ensure all defaults are present
-            for key, value in defaults.items():
-                if key not in config['Settings']:
-                    config['Settings'][key] = value
-            
-            # Add LogFilters section if it doesn't exist
-            if 'LogFilters' not in config:
-                config['LogFilters'] = {}
-                
-            # Ensure all log filter defaults are present
-            for key, value in log_filter_defaults.items():
-                if key not in config['LogFilters']:
-                    config['LogFilters'][key] = value
-            
-            # Add ModuleFilters section if it doesn't exist
-            if 'ModuleFilters' not in config:
-                config['ModuleFilters'] = {}
-                
-            # Ensure all module filter defaults are present
-            for key, value in module_filter_defaults.items():
-                if key not in config['ModuleFilters']:
-                    config['ModuleFilters'][key] = value
-            
-            # Add Shortcuts section if it doesn't exist
-            if 'Shortcuts' not in config:
-                config['Shortcuts'] = {}
-                
-            # Ensure all shortcut defaults are present
-            for key, value in shortcut_defaults.items():
-                if key not in config['Shortcuts']:
-                    config['Shortcuts'][key] = value
-                    
-            # Make sure saved theme is one of the available themes
-            if config['Settings']['theme'] not in THEMES:
-                config['Settings']['theme'] = 'Dark'
-                    
         except Exception as e:
             error(f"Error loading GUI config: {e}")
-            config['Settings'] = defaults
-            config['LogFilters'] = log_filter_defaults
-            config['ModuleFilters'] = module_filter_defaults
-            config['Shortcuts'] = shortcut_defaults
+            config_needs_save = True
     else:
-        # First launch - use defaults
-        config['Settings'] = defaults
-        config['LogFilters'] = log_filter_defaults
-        config['ModuleFilters'] = module_filter_defaults
-        config['Shortcuts'] = shortcut_defaults
+        config_needs_save = True
     
-    save_gui_config(config)
+    # OPTIMIZED: Only add missing sections/keys instead of validating everything
+    if 'Settings' not in config:
+        config['Settings'] = {}
+        config_needs_save = True
+    
+    # Only add missing defaults
+    for key, value in defaults.items():
+        if key not in config['Settings']:
+            config['Settings'][key] = value
+            config_needs_save = True
+    
+    # Same optimization for other sections
+    if 'LogFilters' not in config:
+        config['LogFilters'] = log_filter_defaults
+        config_needs_save = True
+    else:
+        for key, value in log_filter_defaults.items():
+            if key not in config['LogFilters']:
+                config['LogFilters'][key] = value
+                config_needs_save = True
+    
+    if 'ModuleFilters' not in config:
+        config['ModuleFilters'] = module_filter_defaults
+        config_needs_save = True
+    else:
+        for key, value in module_filter_defaults.items():
+            if key not in config['ModuleFilters']:
+                config['ModuleFilters'][key] = value
+                config_needs_save = True
+    
+    if 'Shortcuts' not in config:
+        config['Shortcuts'] = shortcut_defaults
+        config_needs_save = True
+    else:
+        for key, value in shortcut_defaults.items():
+            if key not in config['Shortcuts']:
+                config['Shortcuts'][key] = value
+                config_needs_save = True
+    
+    # Make sure saved theme is valid
+    if config['Settings']['theme'] not in THEMES:
+        config['Settings']['theme'] = 'Dark'
+        config_needs_save = True
+    
+    # OPTIMIZED: Only save if something actually changed
+    if config_needs_save:
+        save_gui_config(config)
+    
     return config
 
 def save_gui_config(config=None):
-    """Save GUI configuration to file"""
+    """Save GUI configuration to file with error handling"""
     if config is None:
         # Create config from current state
         config = configparser.ConfigParser()
-        config['Settings'] = {
-            'theme': theme_var.get(),
-            'mirror_runs': entry.get(),
-            'exp_runs': exp_entry.get(),
-            'exp_stage': exp_stage_var.get(),
-            'threads_runs': threads_entry.get(),
-            'threads_difficulty': threads_difficulty_var.get(),
-            'window_width': str(root.winfo_width()),
-            'window_height': str(root.winfo_height()),
-            'filter_noise': str(filtered_messages_enabled)
-        }
         
-        # Save log filter settings
-        config['LogFilters'] = {
-            'debug': str(log_filters['DEBUG'].get()),
-            'info': str(log_filters['INFO'].get()),
-            'warning': str(log_filters['WARNING'].get()),
-            'error': str(log_filters['ERROR'].get()),
-            'critical': str(log_filters['CRITICAL'].get())
-        }
-        
-        # Save module filter settings
+        # Make sure all sections exist
+        config['Settings'] = {}
+        config['LogFilters'] = {}
         config['ModuleFilters'] = {}
-        for module in LOG_MODULES:
-            config['ModuleFilters'][module.lower().replace(' ', '_')] = str(module_filters[module].get())
+        config['Shortcuts'] = {}
+            
+        # Add settings safely
+        try:
+            config['Settings'] = {
+                'theme': theme_var.get() if 'theme_var' in globals() else 'Dark',
+                'mirror_runs': entry.get() if 'entry' in globals() else '1',
+                'exp_runs': exp_entry.get() if 'exp_entry' in globals() else '1',
+                'exp_stage': exp_stage_var.get() if 'exp_stage_var' in globals() else '1',
+                'threads_runs': threads_entry.get() if 'threads_entry' in globals() else '1',
+                'threads_difficulty': threads_difficulty_var.get() if 'threads_difficulty_var' in globals() else '20',
+                'window_width': str(root.winfo_width()) if 'root' in globals() else '433',
+                'window_height': str(root.winfo_height()) if 'root' in globals() else '344',
+                'filter_noise': str(filtered_messages_enabled) if 'filtered_messages_enabled' in globals() else 'True',
+                'github_owner': 'Kryxzort',
+                'github_repo': 'GuiSirSquirrelAssistant',
+                'auto_update': str(auto_update_var.get()) if 'auto_update_var' in globals() else 'False',
+                'create_backups': str(create_backups_var.get()) if 'create_backups_var' in globals() else 'True',
+                'update_notifications': str(update_notifications_var.get()) if 'update_notifications_var' in globals() else 'True',
+                'kill_processes_on_exit': str(kill_processes_var.get()) if 'kill_processes_var' in globals() else 'False',
+                'chain_threads_runs': chain_threads_entry.get() if 'chain_threads_entry' in globals() else '3',
+                'chain_exp_runs': chain_exp_entry.get() if 'chain_exp_entry' in globals() else '2',
+                'chain_mirror_runs': chain_mirror_entry.get() if 'chain_mirror_entry' in globals() else '1'
+            }
+        except Exception as e:
+            error(f"Error setting up Settings section: {e}")
         
-        # Save keyboard shortcuts
-        config['Shortcuts'] = {
-            'mirror_dungeon': shortcut_vars['mirror_dungeon'].get(),
-            'exp': shortcut_vars['exp'].get(),
-            'threads': shortcut_vars['threads'].get(),
-            'battle': shortcut_vars['battle'].get(),
-            'call_function': shortcut_vars['call_function'].get(),
-            'terminate_functions': shortcut_vars['terminate_functions'].get()
-        }
+        # Save log filter settings if they exist
+        try:
+            if 'log_filters' in globals():
+                config['LogFilters'] = {
+                    'debug': str(log_filters['DEBUG'].get()),
+                    'info': str(log_filters['INFO'].get()),
+                    'warning': str(log_filters['WARNING'].get()),
+                    'error': str(log_filters['ERROR'].get()),
+                    'critical': str(log_filters['CRITICAL'].get())
+                }
+        except Exception as e:
+            error(f"Error setting up LogFilters section: {e}")
+        
+        # Save module filter settings if they exist
+        try:
+            if 'module_filters' in globals() and 'LOG_MODULES' in globals():
+                for module in LOG_MODULES:
+                    config['ModuleFilters'][module.lower().replace(' ', '_')] = str(module_filters[module].get())
+        except Exception as e:
+            error(f"Error setting up ModuleFilters section: {e}")
+        
+        # Save keyboard shortcuts if they exist
+        try:
+            if 'shortcut_vars' in globals():
+                config['Shortcuts'] = {
+                    'mirror_dungeon': shortcut_vars['mirror_dungeon'].get(),
+                    'exp': shortcut_vars['exp'].get(),
+                    'threads': shortcut_vars['threads'].get(),
+                    'battle': shortcut_vars['battle'].get(),
+                    'call_function': shortcut_vars['call_function'].get(),
+                    'terminate_functions': shortcut_vars['terminate_functions'].get(),
+                    'chain_automation': shortcut_vars['chain_automation'].get()
+                }
+        except Exception as e:
+            error(f"Error setting up Shortcuts section: {e}")
     
     try:
+        # Make sure the config directory exists
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        
         with open(GUI_CONFIG_PATH, 'w') as f:
             config.write(f)
-        debug("Saved GUI configuration")
     except Exception as e:
         error(f"Error saving GUI config: {e}")
 
@@ -413,30 +556,90 @@ shortcut_vars = {
     'threads': ctk.StringVar(value=config['Shortcuts'].get('threads', 'ctrl+r')),
     'battle': ctk.StringVar(value=config['Shortcuts'].get('battle', 'ctrl+t')),
     'call_function': ctk.StringVar(value=config['Shortcuts'].get('call_function', 'ctrl+g')),
-    'terminate_functions': ctk.StringVar(value=config['Shortcuts'].get('terminate_functions', 'ctrl+shift+g'))
+    'terminate_functions': ctk.StringVar(value=config['Shortcuts'].get('terminate_functions', 'ctrl+shift+g')),
+    'chain_automation': ctk.StringVar(value=config['Shortcuts'].get('chain_automation', 'ctrl+b'))
 }
 
-# Custom logging handler for displaying logs in the GUI
-class TextWidgetHandler(logging.Handler):
-    """Log handler that redirects logs to a CTkTextbox widget with filtering"""
+# MOVED: Update-related variables (MUST be global for auto-update to work without Settings tab)
+auto_update_var = ctk.BooleanVar(value=config['Settings'].getboolean('auto_update', False))
+create_backups_var = ctk.BooleanVar(value=config['Settings'].getboolean('create_backups', True))
+update_notifications_var = ctk.BooleanVar(value=config['Settings'].getboolean('update_notifications', True))
+kill_processes_var = ctk.BooleanVar(value=config['Settings'].getboolean('kill_processes_on_exit', False))
+
+# MOVED: Global update callback functions (MUST be global for auto-update to work)
+def check_updates_callback(success, message, update_available):
+    """Callback for update checks - MUST be global for auto-update"""
+    global is_update_available
+    is_update_available = update_available
     
-    def __init__(self, text_widget, filters, module_filters):
+    # Update the status label if it exists (Settings tab loaded)
+    if 'update_status_label' in globals():
+        update_status_label.configure(text=f"Update Status: {message}")
+        
+        # Show/hide update button based on availability
+        if update_available:
+            update_now_button.pack(pady=(5, 0))
+        else:
+            update_now_button.pack_forget()
+    
+    # Show title notification if both update is available AND notifications are enabled
+    if update_available and update_notifications_var.get():
+        root.title(f"{original_title} (Outdated Version)")
+    else:
+        root.title(original_title)
+
+def check_updates_action():
+    """Check for updates manually"""
+    if 'update_status_label' in globals():
+        update_status_label.configure(text="Update Status: Checking for updates...")
+    check_for_updates("Kryxzort", "GuiSirSquirrelAssistant", callback=check_updates_callback)
+
+def perform_update():
+    """Perform the update process"""
+    if 'update_status_label' in globals():
+        update_status_label.configure(text="Update Status: Updating...")
+    
+    def update_finished_callback(success, message):
+        if not success and 'update_status_label' in globals():
+            update_status_label.configure(text=f"Update Status: {message}")
+            messagebox.showerror("Update Failed", message)
+    
+    auto_update(
+        "Kryxzort", 
+        "GuiSirSquirrelAssistant", 
+        create_backup=create_backups_var.get(),
+        callback=update_finished_callback
+    )
+
+# =====================================================================
+# OPTIMIZED LOGGING DISPLAY HANDLER
+# =====================================================================
+
+# Simplified and optimized logging handler
+class OptimizedLogHandler(logging.Handler):
+    """Optimized log handler that combines file monitoring and text display"""
+    
+    def __init__(self, text_widget, level_filters, module_filters):
         super().__init__()
         self.text_widget = text_widget
-        self.filters = filters
+        self.level_filters = level_filters
         self.module_filters = module_filters
         self.queue = queue.Queue()
         self.running = True
-        self.update_thread = Thread(target=self._update_widget)
-        self.update_thread.daemon = True
+        self.update_thread = Thread(target=self._update_widget, daemon=True)
         self.update_thread.start()
         
         # Set formatter for the handler
         self.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         
+        # File monitoring
+        self.log_file_path = LOG_FILENAME
+        self.last_position = 0
+        
     def emit(self, record):
         """Put log message in queue for the update thread"""
-        self.queue.put(record)
+        if self.running:
+            self.queue.put(record)
     
     def _update_widget(self):
         """Thread that updates the text widget with new log messages"""
@@ -445,25 +648,16 @@ class TextWidgetHandler(logging.Handler):
                 # Get log message from queue (with timeout to allow thread to exit)
                 record = self.queue.get(block=True, timeout=0.2)
                 
-                # Check if we should display this level based on BooleanVar value
-                level_name = record.levelname
-                module_name = self._get_module_name(record.name)
-                
-                # Check both level and module filters
-                if level_name in self.filters and module_name in self.module_filters:
-                    show_level = self.filters[level_name].get()
-                    show_module = self.module_filters[module_name].get()
-                    
-                    if show_level and show_module and self._should_show_message(record.getMessage()):
-                        # Format the message and schedule GUI update
-                        msg = self.format(record)
-                        # Replace "__main__" with "GUI" in the formatted message
-                        msg = msg.replace(" - __main__ - ", " - GUI - ")
+                # Check if we should display this level and module
+                if self._should_show_record(record):
+                    # Format the message and schedule GUI update
+                    msg = self.format(record)
+                    if self.running:  # Check again before scheduling
                         root.after(0, self._append_log, msg)
                 
                 self.queue.task_done()
             except queue.Empty:
-                pass
+                continue
             except Exception as e:
                 # Avoid crashing the thread on any error
                 try:
@@ -471,18 +665,26 @@ class TextWidgetHandler(logging.Handler):
                 except:
                     pass
     
+    def _should_show_record(self, record):
+        """Check if record should be displayed based on filters"""
+        level_name = record.levelname
+        module_name = self._get_module_name(record.name)
+        
+        # Check both level and module filters
+        if level_name in self.level_filters and module_name in self.module_filters:
+            show_level = self.level_filters[level_name].get()
+            show_module = self.module_filters[module_name].get()
+            
+            return show_level and show_module and self._should_show_message(record.getMessage())
+        return False
+    
     def _get_module_name(self, logger_name):
         """Map logger name to module name for filtering"""
-        # Map "__main__" to "GUI"
-        if logger_name == "__main__":
-            return "GUI"
-        
-        # Try to match other module names
+        # No need to handle __main__ conversion anymore since we use "GUI" directly
         for module, pattern in LOG_MODULES.items():
-            if pattern in logger_name:
+            if pattern == logger_name:
                 return module
         
-        # Default to "Other" if no match
         return "Other"
     
     def _should_show_message(self, message):
@@ -504,143 +706,31 @@ class TextWidgetHandler(logging.Handler):
     def _append_log(self, msg):
         """Append log message to the text widget"""
         try:
-            self.text_widget.configure(state="normal")  # Enable editing
-            self.text_widget.insert("end", msg + "\n")  # Add new log with newline
-            self.text_widget.see("end")  # Scroll to the end
-            self.text_widget.configure(state="disabled")  # Disable editing
-        except Exception as e:
-            # Handle any errors that might occur
-            pass
+            if self.text_widget and self.running:
+                self.text_widget.configure(state="normal")
+                self.text_widget.insert("end", msg + "\n")
+                self.text_widget.see("end")
+                self.text_widget.configure(state="disabled")
+        except Exception:
+            pass  # Silently ignore errors during shutdown
     
     def close(self):
         """Clean up resources when handler is closed"""
         self.running = False
-        if self.update_thread.is_alive():
-            self.update_thread.join(timeout=1.0)
+        if hasattr(self, 'update_thread') and self.update_thread.is_alive():
+            self.update_thread.join(timeout=0.1)  # Shorter timeout
         super().close()
 
-    # Override the filter method to avoid using the built-in filters
     def filter(self, record):
         """Don't use standard filtering"""
         return True
 
-# Log file monitor class for real-time log display
-class LogFileMonitor:
-    """Monitors the log file for changes and updates the GUI log display"""
-    
-    def __init__(self, log_file_path, text_widget, level_filters, module_filters, update_interval=500):
-        self.log_file_path = log_file_path
-        self.text_widget = text_widget
-        self.level_filters = level_filters
-        self.module_filters = module_filters
-        self.update_interval = update_interval  # Check every 500ms
-        self.last_position = 0
-        self.running = True
-    
-    def start_monitoring(self, root):
-        """Start the monitoring process using tkinter's after method"""
-        self._check_for_updates(root)
-    
-    def stop_monitoring(self):
-        """Stop the monitoring process"""
-        self.running = False
-    
-    def _check_for_updates(self, root):
-        """Check for new content in the log file and update the display"""
-        if not self.running:
-            return
-            
-        try:
-            # Get current file size
-            file_size = os.path.getsize(self.log_file_path)
-            
-            # If file has grown
-            if file_size > self.last_position:
-                with open(self.log_file_path, 'r') as f:
-                    # Seek to the last position we read
-                    f.seek(self.last_position)
-                    # Read new lines
-                    new_lines = f.readlines()
-                
-                # Update the last read position
-                self.last_position = file_size
-                
-                # Apply filters and add new lines to the display
-                self.text_widget.configure(state="normal")
-                for line in new_lines:
-                    # Process the line for filtering
-                    self._process_log_line(line)
-                
-                # Scroll to the end if there were new lines
-                if new_lines:
-                    self.text_widget.see("end")
-                
-                self.text_widget.configure(state="disabled")
-            
-            # If file size has decreased (file was rotated or cleared)
-            elif file_size < self.last_position:
-                self.last_position = 0
-                # Clear the display
-                self.text_widget.configure(state="normal")
-                self.text_widget.delete("1.0", "end")
-                self.text_widget.configure(state="disabled")
-                
-        except Exception as e:
-            print(f"Error monitoring log file: {e}")
-        
-        # Schedule the next check
-        if self.running:
-            root.after(self.update_interval, lambda: self._check_for_updates(root))
-    
-    def _process_log_line(self, line):
-        """Process a single log line, applying filters and formatting"""
-        try:
-            # Check log level filters
-            if " - DEBUG - " in line and not self.level_filters["DEBUG"].get():
-                return
-            elif " - INFO - " in line and not self.level_filters["INFO"].get():
-                return
-            elif " - WARNING - " in line and not self.level_filters["WARNING"].get():
-                return
-            elif " - ERROR - " in line and not self.level_filters["ERROR"].get():
-                return
-            elif " - CRITICAL - " in line and not self.level_filters["CRITICAL"].get():
-                return
-            
-            # Check module filters
-            module_found = False
-            for module, pattern in LOG_MODULES.items():
-                if f" - {pattern} - " in line:
-                    module_found = True
-                    if not self.module_filters[module].get():
-                        return
-                    # Replace "__main__" with "GUI" if needed
-                    if pattern == "__main__":
-                        line = line.replace(" - __main__ - ", " - GUI - ")
-                    break
-            
-            # If no specific module was found, check the "Other" filter
-            if not module_found and not self.module_filters["Other"].get():
-                return
-            
-            # Filter out noisy messages
-            if filtered_messages_enabled:
-                # Skip if message contains any filtered text
-                for filtered_msg in FILTERED_MESSAGES:
-                    if filtered_msg in line:
-                        return
-                        
-                # Skip pre-checked statuses logs
-                if re.search(r"Loaded pre-checked statuses: .+", line):
-                    return
-            
-            # If we made it here, the line passes all filters
-            self.text_widget.insert("end", line)
-            
-        except Exception as e:
-            print(f"Error processing log line: {e}")
+# =====================================================================
+# STATUS SELECTION MANAGEMENT
+# =====================================================================
 
 # Status selection management functions
+@safe_execute
 def save_selected_statuses():
     """Save selected checkboxes to file with most recent at the bottom"""
     selected = [name for name, var in checkbox_vars.items() if var.get()]
@@ -673,12 +763,12 @@ def save_selected_statuses():
 
 def on_checkbox_toggle(changed_option):
     """Handle checkbox toggle events"""
-    # Remove this block to allow multiple selections
-    # for name, var in checkbox_vars.items():
-    #     if name != changed_option:
-    #         var.set(False)
     save_selected_statuses()
     info(f"Status toggled: {changed_option}")
+
+# =====================================================================
+# UI INTERACTION FUNCTIONS
+# =====================================================================
 
 # UI interaction functions
 def toggle_expand(frame, arrow_var):
@@ -691,6 +781,7 @@ def toggle_expand(frame, arrow_var):
         arrow_var.set("▼")
 
 # Dropdown management functions
+@safe_execute
 def update_json_from_dropdown(status):
     """Update JSON data from dropdown selections"""
     entries = dropdown_vars[status]
@@ -706,99 +797,127 @@ def update_json_from_dropdown(status):
 
 def dropdown_callback(status, index, *_):
     """Handle dropdown selection changes"""
-    new_val = dropdown_vars[status][index].get()
-    if new_val == "None":
+    try:
+        new_val = dropdown_vars[status][index].get()
+        if new_val == "None":
+            update_json_from_dropdown(status)
+            return
+
+        # Check if duplicate exists
+        for i, var in enumerate(dropdown_vars[status]):
+            if i != index and var.get() == new_val:
+                # Swap with old value from slow_squad
+                old_key = next((k for k, v in slow_squad_data.get(status, {}).items() if v == index + 1), None)
+                if old_key:
+                    old_pretty = next((x for x in SINNER_LIST if sinner_key(x) == old_key), "None")
+                    var.set(old_pretty)
+                break
+
         update_json_from_dropdown(status)
-        return
+    except Exception as e:
+        error(f"Error in dropdown callback: {e}")
 
-    # Check if duplicate exists
-    for i, var in enumerate(dropdown_vars[status]):
-        if i != index and var.get() == new_val:
-            # Swap with old value from slow_squad
-            old_key = next((k for k, v in slow_squad_data.get(status, {}).items() if v == index + 1), None)
-            if old_key:
-                old_pretty = next((x for x in SINNER_LIST if sinner_key(x) == old_key), "None")
-                var.set(old_pretty)
-            break
+# =====================================================================
+# OPTIMIZED PROCESS MANAGEMENT FUNCTIONS
+# =====================================================================
 
-    update_json_from_dropdown(status)
+# Unified process termination function
+def terminate_process(proc, name):
+    """Unified process termination with error handling"""
+    if proc:
+        try:
+            os.kill(proc.pid, signal.SIGTERM)
+            info(f"Terminated {name} process (PID: {proc.pid})")
+            return True
+        except Exception as e:
+            error(f"Failed to kill {name} process: {e}")
+    return False
 
-# Process management functions
+# Process management functions with unified error handling
 def kill_bot():
     """Kill Mirror Dungeon subprocess"""
     global process
-    if process:
-        try:
-            os.kill(process.pid, signal.SIGTERM)
-            info(f"Terminated Mirror Dungeon process (PID: {process.pid})")
-        except Exception as e:
-            error(f"Failed to kill process: {e}")
+    if terminate_process(process, "Mirror Dungeon"):
         process = None
-    start_button.configure(text="Start")
+    if 'start_button' in globals():
+        start_button.configure(text="Start")
 
 def kill_exp_bot():
     """Kill Exp subprocess"""
     global exp_process
-    if exp_process:
-        try:
-            os.kill(exp_process.pid, signal.SIGTERM)
-            info(f"Terminated Exp process (PID: {exp_process.pid})")
-        except Exception as e:
-            error(f"Failed to kill exp process: {e}")
+    if terminate_process(exp_process, "Exp"):
         exp_process = None
-    exp_start_button.configure(text="Start")
+    if 'exp_start_button' in globals():
+        exp_start_button.configure(text="Start")
 
 def kill_threads_bot():
     """Kill Threads subprocess"""
     global threads_process
-    if threads_process:
-        try:
-            os.kill(threads_process.pid, signal.SIGTERM)
-            info(f"Terminated Threads process (PID: {threads_process.pid})")
-        except Exception as e:
-            error(f"Failed to kill threads process: {e}")
+    if terminate_process(threads_process, "Threads"):
         threads_process = None
-    threads_start_button.configure(text="Start")
+    if 'threads_start_button' in globals():
+        threads_start_button.configure(text="Start")
 
 def kill_function_runner():
     """Kill Function Runner subprocess"""
     global function_process, function_process_list
-    if function_process:
-        try:
-            os.kill(function_process.pid, signal.SIGTERM)
-            info(f"Terminated Function Runner process (PID: {function_process.pid})")
-        except Exception as e:
-            error(f"Failed to kill function runner process: {e}")
+    if terminate_process(function_process, "Function Runner"):
         function_process = None
     
     # Also terminate any processes in the list
     for proc in function_process_list[:]:  # Use a copy of the list for iteration
-        try:
-            if proc and proc.poll() is None:  # Check if process is still running
-                os.kill(proc.pid, signal.SIGTERM)
-                info(f"Terminated Function Runner process (PID: {proc.pid})")
-        except Exception as e:
-            error(f"Failed to kill function runner process: {e}")
-        
-        # Remove from list
-        if proc in function_process_list:
-            function_process_list.remove(proc)
+        if proc and proc.poll() is None:  # Check if process is still running
+            if terminate_process(proc, "Function Runner"):
+                function_process_list.remove(proc)
+    
+    # Update UI if buttons exist
+    if 'function_terminate_button' in globals():
+        function_terminate_button.configure(state="disabled")
 
-# Process start functions
+# Unified process start function with shared validation
+def start_automation_process(process_type, command_args, button_ref, process_ref_name):
+    """Unified function to start automation processes"""
+    global process, exp_process, threads_process
+    
+    # Check for process conflicts
+    if check_process_conflict(process_type):
+        return
+    
+    # Check if this specific process is already running (toggle stop)
+    current_process = globals().get(process_ref_name)
+    if current_process and button_ref.cget("text") == "Stop":
+        if process_type == "Mirror Dungeon":
+            kill_bot()
+        elif process_type == "Exp":
+            kill_exp_bot()
+        elif process_type == "Threads":
+            kill_threads_bot()
+        return
+    
+    # Create environment variables with correct paths
+    env = os.environ.copy()
+    env['PYTHONPATH'] = BASE_PATH + os.pathsep + os.path.join(BASE_PATH, 'src')
+    
+    # Launch process with appropriate command
+    try:
+        new_process = subprocess.Popen(command_args, env=env)
+        
+        # Update global process reference
+        globals()[process_ref_name] = new_process
+        
+        button_ref.configure(text="Stop")
+        info(f"Started {process_type} automation (PID: {new_process.pid})")
+        
+        # Save the configuration
+        save_gui_config()
+        
+    except Exception as e:
+        error(f"Failed to start {process_type}: {e}")
+        messagebox.showerror("Error", f"Failed to start {process_type}: {e}")
+
+# Process start functions - now much simpler
 def start_run():
     """Start Mirror Dungeon automation"""
-    global process
-    
-    # Check if another process is running
-    if is_any_process_running() and process is None:
-        running_name = get_running_process_name()
-        warning(f"Cannot start Mirror Dungeon while {running_name} is running")
-        return
-    
-    if start_button.cget("text") == "Stop":
-        kill_bot()
-        return
-        
     try:
         count = int(entry.get())
     except ValueError:
@@ -808,38 +927,16 @@ def start_run():
         
     save_selected_statuses()
     
-    # Create environment variables with correct paths
-    env = os.environ.copy()
-    env['PYTHONPATH'] = os.pathsep.join([BASE_PATH, os.path.join(BASE_PATH, 'src')])
-    
-    # Launch process with appropriate command
+    # Determine command based on execution mode
     if getattr(sys, 'frozen', False):
-        # If frozen (exe), launch the script using the bundled Python
-        process = subprocess.Popen([PYTHON_CMD, "-m", "src.compiled_runner", str(count)], env=env)
+        command_args = [PYTHON_CMD, "-m", "src.compiled_runner", str(count)]
     else:
-        # If script, use the regular Python command
-        process = subprocess.Popen([sys.executable, MIRROR_SCRIPT_PATH, str(count)], env=env)
-        
-    start_button.configure(text="Stop")
-    info(f"Started Mirror Dungeon automation with {count} runs (PID: {process.pid})")
+        command_args = [sys.executable, MIRROR_SCRIPT_PATH, str(count)]
     
-    # Save the configuration
-    save_gui_config()
+    start_automation_process("Mirror Dungeon", command_args, start_button, "process")
 
 def start_exp_run():
     """Start Exp automation"""
-    global exp_process
-    
-    # Check if another process is running
-    if is_any_process_running() and exp_process is None:
-        running_name = get_running_process_name()
-        warning(f"Cannot start Exp while {running_name} is running")
-        return
-    
-    if exp_start_button.cget("text") == "Stop":
-        kill_exp_bot()
-        return
-    
     try:
         runs = int(exp_entry.get())
         stage = int(exp_stage_var.get())
@@ -852,38 +949,16 @@ def start_exp_run():
         warning("Invalid numeric input for Exp automation")
         return
     
-    # Create environment variables with correct paths
-    env = os.environ.copy()
-    env['PYTHONPATH'] = os.pathsep.join([BASE_PATH, os.path.join(BASE_PATH, 'src')])
-    
-    # Launch process with appropriate command
+    # Determine command based on execution mode
     if getattr(sys, 'frozen', False):
-        # If frozen (exe), launch the script using the bundled Python
-        exp_process = subprocess.Popen([PYTHON_CMD, "-m", "src.exp_runner", str(runs), str(stage)], env=env)
+        command_args = [PYTHON_CMD, "-m", "src.exp_runner", str(runs), str(stage)]
     else:
-        # If script, use the regular Python command
-        exp_process = subprocess.Popen([sys.executable, EXP_SCRIPT_PATH, str(runs), str(stage)], env=env)
+        command_args = [sys.executable, EXP_SCRIPT_PATH, str(runs), str(stage)]
     
-    exp_start_button.configure(text="Stop")
-    info(f"Started Exp automation with {runs} runs on stage {stage} (PID: {exp_process.pid})")
-    
-    # Save the configuration
-    save_gui_config()
+    start_automation_process("Exp", command_args, exp_start_button, "exp_process")
 
 def start_threads_run():
     """Start Threads automation"""
-    global threads_process
-    
-    # Check if another process is running
-    if is_any_process_running() and threads_process is None:
-        running_name = get_running_process_name()
-        warning(f"Cannot start Threads while {running_name} is running")
-        return
-    
-    if threads_start_button.cget("text") == "Stop":
-        kill_threads_bot()
-        return
-    
     try:
         runs = int(threads_entry.get())
         difficulty = int(threads_difficulty_var.get())
@@ -902,37 +977,200 @@ def start_threads_run():
         messagebox.showerror("Error", f"Could not find threads_runner.py in src directory. Please ensure it exists.")
         return
     
+    # Determine command based on execution mode
+    if getattr(sys, 'frozen', False):
+        command_args = [PYTHON_CMD, "-m", "src.threads_runner", str(runs), str(difficulty)]
+    else:
+        command_args = [sys.executable, THREADS_SCRIPT_PATH, str(runs), str(difficulty)]
+    
+    start_automation_process("Threads", command_args, threads_start_button, "threads_process")
+
+# =====================================================================
+# CHAIN AUTOMATION FUNCTIONS
+# =====================================================================
+
+def start_chain_automation():
+    """Start chain automation with Threads -> Exp -> Mirror sequence"""
+    global chain_running, chain_queue, current_chain_step
+    
+    if chain_running:
+        # Stop chain if already running
+        stop_chain_automation()
+        return
+    
+    # Check for process conflicts
+    if check_process_conflict("Chain Automation"):
+        return
+    
+    # Parse chain inputs
     try:
-        # Create an environment with the correct paths
+        threads_runs = int(chain_threads_entry.get()) if chain_threads_entry.get().strip() else 0
+        exp_runs = int(chain_exp_entry.get()) if chain_exp_entry.get().strip() else 0
+        mirror_runs = int(chain_mirror_entry.get()) if chain_mirror_entry.get().strip() else 0
+    except ValueError:
+        messagebox.showerror("Invalid Input", "Enter valid numbers for chain automation.")
+        return
+    
+    # Build chain queue
+    chain_queue = []
+    if threads_runs > 0:
+        chain_queue.append(("Threads", threads_runs))
+    if exp_runs > 0:
+        chain_queue.append(("Exp", exp_runs))
+    if mirror_runs > 0:
+        chain_queue.append(("Mirror", mirror_runs))
+    
+    if not chain_queue:
+        messagebox.showerror("Invalid Input", "At least one automation type must have a number greater than 0.")
+        return
+    
+    # Start chain
+    chain_running = True
+    current_chain_step = 0
+    chain_start_button.configure(text="Stop Chain")
+    chain_status_label.configure(text="Chain Status: Starting...")
+    
+    # Save current UI settings to config (like individual automations do)
+    save_gui_config()
+    
+    info(f"Starting chain automation: {chain_queue}")
+    run_next_chain_step()
+
+def stop_chain_automation():
+    """Stop chain automation"""
+    global chain_running
+    
+    chain_running = False
+    
+    # Stop any currently running processes
+    kill_bot()
+    kill_exp_bot()
+    kill_threads_bot()
+    
+    chain_start_button.configure(text="Start Chain")
+    chain_status_label.configure(text="Chain Status: Stopped")
+    info("Chain automation stopped")
+
+def run_next_chain_step():
+    """Run the next step in the chain automation"""
+    global current_chain_step, chain_running
+    
+    if not chain_running or current_chain_step >= len(chain_queue):
+        # Chain completed or stopped
+        chain_running = False
+        chain_start_button.configure(text="Start Chain")
+        chain_status_label.configure(text="Chain Status: Completed")
+        info("Chain automation completed")
+        return
+    
+    # Get current step
+    automation_type, runs = chain_queue[current_chain_step]
+    chain_status_label.configure(text=f"Chain Status: Running {automation_type} ({runs} runs) - Step {current_chain_step + 1}/{len(chain_queue)}")
+    
+    # Save selected statuses for Mirror automation
+    if automation_type == "Mirror":
+        save_selected_statuses()
+    
+    # Start the appropriate automation
+    try:
         env = os.environ.copy()
-        env['PYTHONPATH'] = os.pathsep.join([BASE_PATH, os.path.join(BASE_PATH, 'src')])
+        env['PYTHONPATH'] = BASE_PATH + os.pathsep + os.path.join(BASE_PATH, 'src')
         
-        # Launch with the appropriate command
-        if getattr(sys, 'frozen', False):
-            # If frozen (exe), launch the script using the bundled Python
-            threads_process = subprocess.Popen(
-                [PYTHON_CMD, "-m", "src.threads_runner", str(runs), str(difficulty)],
-                env=env
-            )
-        else:
-            # If script, use the regular Python command
-            threads_process = subprocess.Popen(
-                [sys.executable, THREADS_SCRIPT_PATH, str(runs), str(difficulty)],
-                env=env
-            )
+        if automation_type == "Threads":
+            difficulty = int(threads_difficulty_var.get())
+            if getattr(sys, 'frozen', False):
+                command_args = [PYTHON_CMD, "-m", "src.threads_runner", str(runs), str(difficulty)]
+            else:
+                command_args = [sys.executable, THREADS_SCRIPT_PATH, str(runs), str(difficulty)]
+            
+            global threads_process
+            threads_process = subprocess.Popen(command_args, env=env)
+            info(f"Chain: Started Threads automation ({runs} runs, difficulty {difficulty})")
+            
+        elif automation_type == "Exp":
+            stage = int(exp_stage_var.get())
+            if getattr(sys, 'frozen', False):
+                command_args = [PYTHON_CMD, "-m", "src.exp_runner", str(runs), str(stage)]
+            else:
+                command_args = [sys.executable, EXP_SCRIPT_PATH, str(runs), str(stage)]
+            
+            global exp_process
+            exp_process = subprocess.Popen(command_args, env=env)
+            info(f"Chain: Started Exp automation ({runs} runs, stage {stage})")
+            
+        elif automation_type == "Mirror":
+            if getattr(sys, 'frozen', False):
+                command_args = [PYTHON_CMD, "-m", "src.compiled_runner", str(runs)]
+            else:
+                command_args = [sys.executable, MIRROR_SCRIPT_PATH, str(runs)]
+            
+            global process
+            process = subprocess.Popen(command_args, env=env)
+            info(f"Chain: Started Mirror automation ({runs} runs)")
         
-        threads_start_button.configure(text="Stop")
-        info(f"Started Threads automation with {runs} runs on difficulty {difficulty} (PID: {threads_process.pid})")
+        # Move to next step
+        current_chain_step += 1
         
-        # Save the configuration
-        save_gui_config()
+        # Monitor this step completion
+        monitor_chain_step()
+        
     except Exception as e:
-        error(f"Failed to start Threads process: {e}")
-        messagebox.showerror("Error", f"Failed to start Threads automation: {e}")
+        error(f"Failed to start {automation_type} in chain: {e}")
+        stop_chain_automation()
+
+def monitor_chain_step():
+    """Monitor the current chain step and proceed when done"""
+    global chain_running, process, exp_process, threads_process
+    
+    if not chain_running:
+        return
+    
+    # Get current step info
+    if current_chain_step == 0 or current_chain_step > len(chain_queue):
+        # No step started yet or chain completed
+        return
+    
+    automation_type, runs = chain_queue[current_chain_step - 1]
+    
+    # Check if current process is done
+    current_process = None
+    process_finished = False
+    
+    if automation_type == "Threads":
+        current_process = threads_process
+        if threads_process is None or threads_process.poll() is not None:
+            process_finished = True
+            if threads_process and threads_process.poll() is not None:
+                threads_process = None  # Clean up
+    elif automation_type == "Exp":
+        current_process = exp_process
+        if exp_process is None or exp_process.poll() is not None:
+            process_finished = True
+            if exp_process and exp_process.poll() is not None:
+                exp_process = None  # Clean up
+    elif automation_type == "Mirror":
+        current_process = process
+        if process is None or process.poll() is not None:
+            process_finished = True
+            if process and process.poll() is not None:
+                process = None  # Clean up
+    
+    if process_finished:
+        info(f"Chain: {automation_type} automation completed, moving to next step")
+        
+        # Start next step after a small delay
+        root.after(2000, run_next_chain_step)  # 2 second delay between steps
+    else:
+        # Still running, check again in 1 second
+        root.after(1000, monitor_chain_step)
+
+# =====================================================================
+# FUNCTION RUNNER FUNCTIONS
+# =====================================================================
 
 def call_function():
     """Call a function using function_runner.py"""
-    global function_process, function_process_list
+    global function_process_list
     
     # Get the function to call
     function_name = function_entry.get().strip()
@@ -941,38 +1179,18 @@ def call_function():
         warning("Empty function name provided")
         return
     
-    # Ensure the function_runner script path is correct or create it if it doesn't exist
-    if not os.path.exists(FUNCTION_RUNNER_PATH):
-        warning(f"Function runner script not found at: {FUNCTION_RUNNER_PATH}, will create it")
-        try:
-            # Create the script with basic functionality
-            os.makedirs(os.path.dirname(FUNCTION_RUNNER_PATH), exist_ok=True)
-            with open(FUNCTION_RUNNER_PATH, 'w') as f:
-                # We'll replace this with the updated script content that handles arguments
-                pass
-        except Exception as e:
-            error(f"Failed to create function_runner.py: {e}")
-            messagebox.showerror("Error", f"Failed to create function_runner.py: {e}")
-            return
-    
     try:
         # Create an environment with the correct paths
         env = os.environ.copy()
-        env['PYTHONPATH'] = os.pathsep.join([BASE_PATH, os.path.join(BASE_PATH, 'src')])
+        env['PYTHONPATH'] = BASE_PATH + os.pathsep + os.path.join(BASE_PATH, 'src')
         
         # Launch with the appropriate command
         if getattr(sys, 'frozen', False):
-            # If frozen (exe), launch the script using the bundled Python
-            new_process = subprocess.Popen(
-                [PYTHON_CMD, "-m", "src.function_runner", function_name, "--listen-stdin"],
-                env=env
-            )
+            command_args = [PYTHON_CMD, "-m", "src.function_runner", function_name, "--listen-stdin"]
         else:
-            # If script, use the regular Python command
-            new_process = subprocess.Popen(
-                [sys.executable, FUNCTION_RUNNER_PATH, function_name, "--listen-stdin"],
-                env=env
-            )
+            command_args = [sys.executable, FUNCTION_RUNNER_PATH, function_name, "--listen-stdin"]
+        
+        new_process = subprocess.Popen(command_args, env=env)
         
         # Add to the list of function processes
         function_process_list.append(new_process)
@@ -984,24 +1202,21 @@ def call_function():
         messagebox.showerror("Error", f"Failed to call function: {e}")
 
 def start_battle():
-    """Start a battle directly using mirror.battle()"""
-    # Find any existing battle processes
-    global function_process_list
+    """Start a battle directly using the dedicated battler.py script"""
+    global battle_process
     
-    # Check if there's already a mirror.battle running
-    for proc in function_process_list[:]:
-        # We have no direct way to know which process is mirror.battle
-        # So we'll terminate the most recent function call if the shortcut is pressed again
-        if proc and proc.poll() is None:  # Process is still running
-            try:
-                os.kill(proc.pid, signal.SIGTERM)
-                info(f"Terminated function process (PID: {proc.pid}) via battle shortcut")
-                function_process_list.remove(proc)
-                return
-            except Exception as e:
-                error(f"Failed to kill process: {e}")
+    # Check if there's already a battle process running
+    if battle_process is not None and battle_process.poll() is None:
+        # Process is still running, terminate it
+        try:
+            os.kill(battle_process.pid, signal.SIGTERM)
+            info(f"Terminated battle process (PID: {battle_process.pid}) via battle shortcut")
+            battle_process = None
+            return
+        except Exception as e:
+            error(f"Failed to kill battle process: {e}")
     
-    # No processes running or couldn't terminate any, start a new battle
+    # No battle process running or it's already completed, start a new battle
     try:
         # Create environment variables with correct paths
         env = os.environ.copy()
@@ -1010,24 +1225,31 @@ def start_battle():
         # Launch with the appropriate command
         if getattr(sys, 'frozen', False):
             # If frozen (exe), launch the script using the bundled Python
-            battle_process = subprocess.Popen(
-                [PYTHON_CMD, "-m", "src.function_runner", "mirror.battle"],
+            new_battle_process = subprocess.Popen(
+                [PYTHON_CMD, "-m", "src.battler"],
                 env=env
             )
         else:
             # If script, use the regular Python command
-            battle_process = subprocess.Popen(
-                [sys.executable, FUNCTION_RUNNER_PATH, "mirror.battle"],
+            new_battle_process = subprocess.Popen(
+                [sys.executable, BATTLER_SCRIPT_PATH],
                 env=env
             )
         
-        # Track this process
-        function_process_list.append(battle_process)
-        info(f"Started battle via keyboard shortcut (PID: {battle_process.pid})")
+        # Only track in battle_process, not in function_process_list
+        battle_process = new_battle_process
+        info(f"Started battle via dedicated battler.py (PID: {new_battle_process.pid})")
         
     except Exception as e:
         error(f"Failed to start battle: {e}")
         messagebox.showerror("Error", f"Failed to start battle: {e}")
+
+def toggle_chain_automation():
+    """Toggle chain automation via keyboard shortcut"""
+    if chain_running:
+        stop_chain_automation()
+    else:
+        start_chain_automation()
 
 def call_function_shortcut():
     """Trigger the call function button via keyboard shortcut"""
@@ -1060,12 +1282,9 @@ def toggle_threads_button():
     else:
         kill_threads_bot()
 
-def toggle_function_button():
-    """Toggle Function button state"""
-    if function_call_button.cget("text") == "Call":
-        call_function()
-    else:
-        kill_function_runner()
+# =====================================================================
+# THEME APPLICATION AND KEYBOARD SHORTCUTS
+# =====================================================================
 
 # Theme application function
 def apply_theme():
@@ -1086,11 +1305,15 @@ def apply_theme():
         
         info(f"Applying theme: {theme_name} - Restarting application...")
         
-        # Start theme_restart.py with the theme name and specify "Settings" tab
-        subprocess.Popen([sys.executable, THEME_RESTART_PATH, theme_name, "Settings"])
-        
-        # Short delay then exit
-        root.after(100, lambda: os._exit(0))
+        try:
+            # Start theme_restart.py with the theme name and specify "Settings" tab
+            subprocess.Popen([sys.executable, THEME_RESTART_PATH, theme_name, "Settings"])
+            
+            # Short delay then exit
+            root.after(100, lambda: os._exit(0))
+        except Exception as e:
+            error(f"Error applying theme: {e}")
+            messagebox.showerror("Error", f"Failed to apply theme: {e}")
 
 # Keyboard shortcut management
 def register_keyboard_shortcuts():
@@ -1106,11 +1329,13 @@ def register_keyboard_shortcuts():
         keyboard.add_hotkey(shortcut_vars['battle'].get(), start_battle)
         keyboard.add_hotkey(shortcut_vars['call_function'].get(), call_function_shortcut)
         keyboard.add_hotkey(shortcut_vars['terminate_functions'].get(), terminate_functions_shortcut)
+        keyboard.add_hotkey(shortcut_vars['chain_automation'].get(), toggle_chain_automation)
         
         debug(f"Registered keyboard shortcuts: {shortcut_vars['mirror_dungeon'].get()} (Mirror), "
               f"{shortcut_vars['exp'].get()} (Exp), {shortcut_vars['threads'].get()} (Threads), "
               f"{shortcut_vars['battle'].get()} (Battle), {shortcut_vars['call_function'].get()} (Call Function), "
-              f"{shortcut_vars['terminate_functions'].get()} (Terminate Functions)")
+              f"{shortcut_vars['terminate_functions'].get()} (Terminate Functions), "
+              f"{shortcut_vars['chain_automation'].get()} (Chain Automation)")
     except Exception as e:
         error(f"Error registering keyboard shortcuts: {e}")
         messagebox.showerror("Invalid Shortcut", f"Failed to register shortcuts: {e}\nPlease check your shortcut format.")
@@ -1130,8 +1355,12 @@ window_width = config['Settings'].getint('window_width', 433)
 window_height = config['Settings'].getint('window_height', 344)
 root.geometry(f"{window_width}x{window_height}")
 
-    # Performance improvement: Disable complex logging at startup
+# Performance improvement: Disable complex logging at startup
 info("GUI initialized")
+
+# =====================================================================
+# TAB LAYOUT AND UI SETUP
+# =====================================================================
 
 # Tab layout
 tabs = ctk.CTkTabview(master=root, width=window_width-40, height=window_height-60)
@@ -1141,16 +1370,26 @@ tabs.pack(padx=20, pady=20, fill="both", expand=True)
 tab_md = tabs.add("Mirror Dungeon")
 tab_exp = tabs.add("Exp")
 tab_threads = tabs.add("Threads")
-tab_others = tabs.add("Others")  # Add the new "Others" tab
+tab_others = tabs.add("Others")  # The new "Others" tab
 tab_settings = tabs.add("Settings")
 tab_help = tabs.add("Help")
 tab_logs = tabs.add("Logs")
 
-# Check if we're starting after a theme change and set the tab immediately
-if len(sys.argv) > 1 and sys.argv[1] in THEMES.keys():
-    # Theme was specified as first argument (restarted after theme change)
-    if len(sys.argv) > 2 and sys.argv[2] == "Settings":
-        tabs.set("Settings")
+# FIXED: Handle theme restart and Settings tab loading
+is_theme_restart = len(sys.argv) > 1 and sys.argv[1] in THEMES.keys()
+load_settings_on_startup = is_theme_restart and len(sys.argv) > 2 and sys.argv[2] == "Settings"
+
+# Add tab change event handler for lazy loading
+def on_tab_changed():
+    """Handle tab changes and lazy load content"""
+    current_tab = tabs.get()
+    
+    if current_tab == "Settings" and not settings_tab_loaded:
+        load_settings_tab()
+    elif current_tab == "Logs" and not logs_tab_loaded:
+        load_logs_tab()
+
+tabs.configure(command=on_tab_changed)
         
 # Setting up the Mirror Dungeon tab
 scroll = ctk.CTkScrollableFrame(master=tab_md)
@@ -1210,10 +1449,73 @@ threads_difficulty_dropdown.pack(pady=(0, 15))
 threads_start_button = ctk.CTkButton(threads_scroll, text="Start", command=start_threads_run)
 threads_start_button.pack(pady=(0, 15))
 
+# =====================================================================
+# OTHERS TAB - UPDATED WITH CHAIN FUNCTIONS
+# =====================================================================
+
 # Setting up the Others tab
 others_scroll = ctk.CTkScrollableFrame(master=tab_others)
 others_scroll.pack(fill="both", expand=True)
 
+# Chain Functions section
+ctk.CTkLabel(others_scroll, text="Chain Functions", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+
+chain_help = ctk.CTkLabel(
+    others_scroll, 
+    text="Run automations in sequence: Threads → Exp → Mirror. Enter 0 to skip.", 
+    font=ctk.CTkFont(size=12), 
+    text_color="gray"
+)
+chain_help.pack(pady=(0, 10))
+
+# Chain input frame
+chain_frame = ctk.CTkFrame(others_scroll)
+chain_frame.pack(pady=(0, 10), fill="x", padx=20)
+
+# Threads input
+threads_chain_frame = ctk.CTkFrame(chain_frame)
+threads_chain_frame.pack(fill="x", pady=5)
+ctk.CTkLabel(threads_chain_frame, text="Threads Runs:", width=100).pack(side="left", padx=(10, 5))
+chain_threads_entry = ctk.CTkEntry(threads_chain_frame, width=80)
+chain_threads_entry.pack(side="left", padx=(0, 10))
+chain_threads_entry.insert(0, config['Settings'].get('chain_threads_runs', '3'))
+
+# Exp input
+exp_chain_frame = ctk.CTkFrame(chain_frame)
+exp_chain_frame.pack(fill="x", pady=5)
+ctk.CTkLabel(exp_chain_frame, text="Exp Runs:", width=100).pack(side="left", padx=(10, 5))
+chain_exp_entry = ctk.CTkEntry(exp_chain_frame, width=80)
+chain_exp_entry.pack(side="left", padx=(0, 10))
+chain_exp_entry.insert(0, config['Settings'].get('chain_exp_runs', '2'))
+
+# Mirror input
+mirror_chain_frame = ctk.CTkFrame(chain_frame)
+mirror_chain_frame.pack(fill="x", pady=5)
+ctk.CTkLabel(mirror_chain_frame, text="Mirror Runs:", width=100).pack(side="left", padx=(10, 5))
+chain_mirror_entry = ctk.CTkEntry(mirror_chain_frame, width=80)
+chain_mirror_entry.pack(side="left", padx=(0, 10))
+chain_mirror_entry.insert(0, config['Settings'].get('chain_mirror_runs', '1'))
+
+# Chain control buttons
+chain_control_frame = ctk.CTkFrame(others_scroll)
+chain_control_frame.pack(pady=(0, 10))
+
+chain_start_button = ctk.CTkButton(chain_control_frame, text="Start Chain", command=start_chain_automation, width=150)
+chain_start_button.pack(side="left", padx=5)
+
+# Chain status
+chain_status_label = ctk.CTkLabel(
+    others_scroll,
+    text="Chain Status: Ready",
+    font=ctk.CTkFont(size=12)
+)
+chain_status_label.pack(pady=(0, 15))
+
+# Separator
+separator1 = ctk.CTkFrame(others_scroll, height=2, width=300)
+separator1.pack(pady=10)
+
+# Function call section
 ctk.CTkLabel(others_scroll, text="Call a function:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
 function_entry = ctk.CTkEntry(others_scroll, width=300)
 function_entry.pack(pady=(0, 5))
@@ -1221,7 +1523,7 @@ function_entry.pack(pady=(0, 5))
 # Help text for function call
 function_help = ctk.CTkLabel(
     others_scroll, 
-    text="Type any function from any module, e.g., mirror.battle or time.sleep(1)", 
+    text="Type any function from any module, e.g., core.battle or time.sleep(1)", 
     font=ctk.CTkFont(size=12), 
     text_color="gray"
 )
@@ -1240,203 +1542,576 @@ function_terminate_button = ctk.CTkButton(
 )
 function_terminate_button.pack(pady=(0, 15))
 
-# Setting up the Settings tab
-settings_scroll = ctk.CTkScrollableFrame(master=tab_settings)
-settings_scroll.pack(fill="both", expand=True)
+# =====================================================================
+# LAZY-LOADED SETTINGS TAB - UPDATED WITH UPDATES SECTION
+# =====================================================================
 
-# Reordered settings sections as requested: 1. Team, 2. Assign Sinners, 3. Keyboard Shortcuts, 4. Theme
+def load_settings_tab():
+    """Lazy load the Settings tab content"""
+    global settings_tab_loaded, update_status_label, update_now_button
+    if settings_tab_loaded:
+        return
+    
+    # Setting up the Settings tab
+    settings_scroll = ctk.CTkScrollableFrame(master=tab_settings)
+    settings_scroll.pack(fill="both", expand=True)
 
-# 1. Team selection section
-ctk.CTkLabel(settings_scroll, text="Your Team", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
-team_frame = ctk.CTkFrame(settings_scroll)
-team_frame.pack(pady=(0, 15))
+    # Reordered settings sections: 1. Team, 2. Assign Sinners, 3. Keyboard Shortcuts, 4. Updates, 5. Theme, 6. Kill Processes Toggle
 
-prechecked = load_initial_selections()
+    # 1. Team selection section
+    ctk.CTkLabel(settings_scroll, text="Your Team", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    team_frame = ctk.CTkFrame(settings_scroll)
+    team_frame.pack(pady=(0, 15))
 
-for name, row, col in TEAM_ORDER:
-    var = ctk.BooleanVar(value=name in prechecked)
-    chk = ctk.CTkCheckBox(
-        master=team_frame,
-        text=name.capitalize(),
-        variable=var,
-        command=lambda opt=name: on_checkbox_toggle(opt),
-        font=ctk.CTkFont(size=16)
-    )
-    chk.grid(row=row, column=col, padx=5, pady=2, sticky="w")
-    checkbox_vars[name] = var
+    prechecked = load_initial_selections()
 
-# 2. Sinner assignment section
-ctk.CTkLabel(settings_scroll, text="Assign Sinners to Name", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
-
-container = ctk.CTkFrame(settings_scroll)
-container.pack()
-
-load_json()
-
-for col_idx, group in enumerate(STATUS_COLUMNS):
-    col = ctk.CTkFrame(container, fg_color="transparent")
-    col.grid(row=0, column=col_idx, padx=15, sticky="n")
-
-    for row_idx, status in enumerate(group):
-        wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
-        wrapper.grid(row=row_idx, column=0, sticky="nw")
-
-        arrow_var = ctk.StringVar(value="▶")
-        full_text = ctk.StringVar(value=f"{arrow_var.get()} {status.capitalize()}")
-
-        def make_toggle(stat=status, arrow=arrow_var):
-            return lambda: toggle_expand(expand_frames[stat], arrow)
-
-        btn = ctk.CTkButton(
-            master=wrapper,
-            textvariable=full_text,
-            command=make_toggle(),
-            width=200,
-            height=38,
-            font=ctk.CTkFont(size=18),
-            anchor="w"
+    for name, row, col in TEAM_ORDER:
+        var = ctk.BooleanVar(value=name in prechecked)
+        chk = ctk.CTkCheckBox(
+            master=team_frame,
+            text=name.capitalize(),
+            variable=var,
+            command=lambda opt=name: on_checkbox_toggle(opt),
+            font=ctk.CTkFont(size=16)
         )
-        btn.pack(anchor="w", pady=(0, 6))
+        chk.grid(row=row, column=col, padx=5, pady=2, sticky="w")
+        checkbox_vars[name] = var
 
-        arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=status: textvar.set(f"{var.get()} {name.capitalize()}"))
+    # 2. Sinner assignment section
+    ctk.CTkLabel(settings_scroll, text="Assign Sinners to Name", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
 
-        frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
-        expand_frames[status] = frame
-        frame.pack_forget()
+    container = ctk.CTkFrame(settings_scroll)
+    container.pack()
 
-        dropdown_vars[status] = []
-        default_order = squad_data.get(status, {})
-        reverse_map = {v: k for k, v in default_order.items()}
+    load_json()
 
-        for i in range(12):
-            row = ctk.CTkFrame(master=frame, fg_color="transparent")
-            row.pack(pady=1, anchor="w")
+    for col_idx, group in enumerate(STATUS_COLUMNS):
+        col = ctk.CTkFrame(container, fg_color="transparent")
+        col.grid(row=0, column=col_idx, padx=15, sticky="n")
 
-            label = ctk.CTkLabel(
-                master=row,
-                text=f"{i+1}.",
-                anchor="e",
+        for row_idx, status in enumerate(group):
+            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
+            wrapper.grid(row=row_idx, column=0, sticky="nw")
+
+            arrow_var = ctk.StringVar(value="▶")
+            full_text = ctk.StringVar(value=f"{arrow_var.get()} {status.capitalize()}")
+
+            def make_toggle(stat=status, arrow=arrow_var):
+                return lambda: toggle_expand(expand_frames[stat], arrow)
+
+            btn = ctk.CTkButton(
+                master=wrapper,
+                textvariable=full_text,
+                command=make_toggle(),
+                width=200,
+                height=38,
                 font=ctk.CTkFont(size=18),
-                text_color="#b0b0b0",
-                width=30
+                anchor="w"
             )
-            label.pack(side="left", padx=(0, 10))
+            btn.pack(anchor="w", pady=(0, 6))
 
-            var = ctk.StringVar()
-            raw_name = reverse_map.get(i + 1)
-            pretty = next((x for x in SINNER_LIST if sinner_key(x) == raw_name), "None") if raw_name else "None"
-            var.set(pretty)
+            arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=status: textvar.set(f"{var.get()} {name.capitalize()}"))
 
-            def bind_callback(status=status, idx=i, v=var):
-                v.trace_add("write", lambda *a: dropdown_callback(status, idx))
+            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+            expand_frames[status] = frame
+            frame.pack_forget()
 
-            dropdown = ctk.CTkOptionMenu(
-                master=row,
-                variable=var,
-                values=SINNER_LIST + ["None"],
-                width=160,
-                font=ctk.CTkFont(size=16)
-            )
-            dropdown.pack(side="left")
-            bind_callback()
-            dropdown_vars[status].append(var)
+            dropdown_vars[status] = []
+            default_order = squad_data.get(status, {})
+            reverse_map = {v: k for k, v in default_order.items()}
 
-# 3. Keyboard shortcut configuration section
-ctk.CTkLabel(settings_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
-shortcuts_frame = ctk.CTkFrame(settings_scroll)
-shortcuts_frame.pack(pady=(0, 15), fill="x", padx=20)
+            for i in range(12):
+                row = ctk.CTkFrame(master=frame, fg_color="transparent")
+                row.pack(pady=1, anchor="w")
 
-def update_shortcut(shortcut_type):
-    """Update and apply a keyboard shortcut"""
-    try:
-        # Try to register the shortcuts to see if they're valid
-        test_key = keyboard.add_hotkey(shortcut_vars[shortcut_type].get(), lambda: None)
-        keyboard.remove_hotkey(test_key)
-        
-        # Save configuration
+                label = ctk.CTkLabel(
+                    master=row,
+                    text=f"{i+1}.",
+                    anchor="e",
+                    font=ctk.CTkFont(size=18),
+                    text_color="#b0b0b0",
+                    width=30
+                )
+                label.pack(side="left", padx=(0, 10))
+
+                var = ctk.StringVar()
+                raw_name = reverse_map.get(i + 1)
+                pretty = next((x for x in SINNER_LIST if sinner_key(x) == raw_name), "None") if raw_name else "None"
+                var.set(pretty)
+
+                def bind_callback(status=status, idx=i, v=var):
+                    v.trace_add("write", lambda *a: dropdown_callback(status, idx))
+
+                dropdown = ctk.CTkOptionMenu(
+                    master=row,
+                    variable=var,
+                    values=SINNER_LIST + ["None"],
+                    width=160,
+                    font=ctk.CTkFont(size=16)
+                )
+                dropdown.pack(side="left")
+                bind_callback()
+                dropdown_vars[status].append(var)
+
+    # 3. Keyboard shortcut configuration section
+    ctk.CTkLabel(settings_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    shortcuts_frame = ctk.CTkFrame(settings_scroll)
+    shortcuts_frame.pack(pady=(0, 15), fill="x", padx=20)
+
+    def update_shortcut(shortcut_type):
+        """Update and apply a keyboard shortcut"""
+        try:
+            # Try to register the shortcuts to see if they're valid
+            test_key = keyboard.add_hotkey(shortcut_vars[shortcut_type].get(), lambda: None)
+            keyboard.remove_hotkey(test_key)
+            
+            # Save configuration
+            save_gui_config()
+            # Re-register all shortcuts
+            register_keyboard_shortcuts()
+            info(f"Updated {shortcut_type} shortcut to: {shortcut_vars[shortcut_type].get()}")
+            
+        except Exception as e:
+            error(f"Invalid shortcut format: {e}")
+            # Reset to previous value
+            shortcut_vars[shortcut_type].set(config['Shortcuts'].get(shortcut_type))
+            messagebox.showerror("Invalid Shortcut", f"Invalid shortcut format: {shortcut_vars[shortcut_type].get()}\n\nValid examples: ctrl+q, alt+s, shift+x")
+
+    # Mirror Dungeon shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Mirror Dungeon:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    md_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['mirror_dungeon'], width=100)
+    md_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('mirror_dungeon')).pack(side="left")
+
+    # Exp shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Exp:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    exp_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['exp'], width=100)
+    exp_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('exp')).pack(side="left")
+
+    # Threads shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Threads:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    threads_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['threads'], width=100)
+    threads_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('threads')).pack(side="left")
+
+    # Start Battle shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Start Battle:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    battle_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['battle'], width=100)
+    battle_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('battle')).pack(side="left")
+
+    # Chain Automation shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Chain Automation:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    chain_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['chain_automation'], width=100)
+    chain_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('chain_automation')).pack(side="left")
+
+    # Call Function shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Call Function:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    call_function_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['call_function'], width=100)
+    call_function_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('call_function')).pack(side="left")
+
+    # Terminate Functions shortcut
+    shortcut_row = ctk.CTkFrame(shortcuts_frame)
+    shortcut_row.pack(fill="x", pady=5)
+    ctk.CTkLabel(shortcut_row, text="Terminate Functions:", width=120, anchor="e").pack(side="left", padx=(10, 10))
+    terminate_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['terminate_functions'], width=100)
+    terminate_shortcut_entry.pack(side="left", padx=(0, 10))
+    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
+                  command=lambda: update_shortcut('terminate_functions')).pack(side="left")
+
+    # Help text for keyboard shortcuts
+    shortcut_help = ctk.CTkLabel(shortcuts_frame, text="Format examples: ctrl+q, alt+s, shift+x", 
+                                font=ctk.CTkFont(size=12), text_color="gray")
+    shortcut_help.pack(pady=(5, 10))
+
+    # 4. MOVED: Updates section (from Others tab)
+    if UPDATER_AVAILABLE:
+        ctk.CTkLabel(settings_scroll, text="Updates", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+
+        # Update options frame
+        update_frame = ctk.CTkFrame(settings_scroll)
+        update_frame.pack(pady=(0, 10), fill="x", padx=20)
+
+        # Auto update toggle - consolidated option
+        auto_update_checkbox = ctk.CTkCheckBox(
+            update_frame,
+            text="Auto update (checks and applies updates on startup)",
+            variable=auto_update_var,
+            command=lambda: save_gui_config()
+        )
+        auto_update_checkbox.pack(anchor="w", padx=10, pady=5)
+
+        # Create backups toggle
+        create_backups_checkbox = ctk.CTkCheckBox(
+            update_frame,
+            text="Create backups on update",
+            variable=create_backups_var,
+            command=lambda: save_gui_config()
+        )
+        create_backups_checkbox.pack(anchor="w", padx=10, pady=5)
+
+        # Update notifications toggle
+        update_notifications_checkbox = ctk.CTkCheckBox(
+            update_frame,
+            text="Show update notifications",
+            variable=update_notifications_var,
+            command=lambda: save_gui_config()
+        )
+        update_notifications_checkbox.pack(anchor="w", padx=10, pady=5)
+
+        # Update status
+        update_status_label = ctk.CTkLabel(
+            settings_scroll,
+            text="Update Status: Not checked",
+            font=ctk.CTkFont(size=14)
+        )
+        update_status_label.pack(pady=(10, 5))
+
+        # Update buttons frame to keep them together
+        update_buttons_frame = ctk.CTkFrame(settings_scroll)
+        update_buttons_frame.pack(pady=(5, 15))
+
+        # Check for updates button
+        check_updates_button = ctk.CTkButton(
+            update_buttons_frame,
+            text="Check for Updates",
+            command=check_updates_action,
+            width=150
+        )
+        check_updates_button.pack(pady=5)
+
+        # Update now button (initially hidden)
+        update_now_button = ctk.CTkButton(
+            update_buttons_frame,
+            text="Update Now",
+            command=perform_update,
+            width=150
+        )
+        # Initially hidden - will be shown when updates are available
+        update_now_button.pack_forget()
+
+    # 5. Theme selection section
+    ctk.CTkLabel(settings_scroll, text="Theme", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    theme_dropdown = ctk.CTkOptionMenu(
+        master=settings_scroll,
+        variable=theme_var,
+        values=list(THEMES.keys()),
+        width=200,
+        font=ctk.CTkFont(size=16),
+        command=lambda _: apply_theme()
+    )
+    theme_dropdown.pack(pady=(0, 15))
+
+    # 6. Kill processes on exit toggle
+    ctk.CTkLabel(settings_scroll, text="Application Behavior", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    behavior_frame = ctk.CTkFrame(settings_scroll)
+    behavior_frame.pack(pady=(0, 15), fill="x", padx=20)
+
+    kill_processes_checkbox = ctk.CTkCheckBox(
+        behavior_frame,
+        text="Kill processes on exit (disable for faster closing)",
+        variable=kill_processes_var,
+        command=lambda: save_gui_config()
+    )
+    kill_processes_checkbox.pack(anchor="w", padx=10, pady=10)
+
+    settings_tab_loaded = True
+
+# =====================================================================
+# RESPONSIVE LOGS TAB - FIXED FOR SCALING
+# =====================================================================
+
+def load_logs_tab():
+    """Lazy load the Logs tab content with responsive design"""
+    global logs_tab_loaded, log_handler
+    if logs_tab_loaded:
+        return
+
+    # Main logs container
+    logs_main_frame = ctk.CTkFrame(tab_logs)
+    logs_main_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+    # FIXED: Create responsive filter controls that scale with window size
+    filter_container = ctk.CTkScrollableFrame(logs_main_frame, height=120)
+    filter_container.pack(fill="x", padx=5, pady=(0, 5))
+
+    # Filter header
+    filter_header = ctk.CTkFrame(filter_container)
+    filter_header.pack(fill="x", pady=(0, 5))
+    
+    ctk.CTkLabel(filter_header, text="Log Filters", 
+                font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=10)
+
+    # Clean logs toggle
+    filter_toggle = ctk.CTkSwitch(
+        master=filter_header,
+        text="Clean Logs",
+        variable=ctk.BooleanVar(value=filtered_messages_enabled),
+        command=lambda: toggle_filtered_messages(),
+        onvalue=True,
+        offvalue=False
+    )
+    filter_toggle.pack(side="right", padx=10)
+
+    def toggle_filtered_messages():
+        """Toggle filtering of noisy messages"""
+        global filtered_messages_enabled
+        filtered_messages_enabled = filter_toggle.get()
         save_gui_config()
-        # Re-register all shortcuts
-        register_keyboard_shortcuts()
-        info(f"Updated {shortcut_type} shortcut to: {shortcut_vars[shortcut_type].get()}")
+        load_log_file(reload_all=True)  # Reload logs with new filter setting
+
+    # FIXED: Responsive filter grid that wraps properly
+    filters_main_frame = ctk.CTkFrame(filter_container)
+    filters_main_frame.pack(fill="x", expand=True, padx=5, pady=5)
+
+    # Level filters section
+    levels_frame = ctk.CTkFrame(filters_main_frame)
+    levels_frame.pack(side="left", fill="y", padx=(5, 2))
+    
+    ctk.CTkLabel(levels_frame, text="Log Levels:", 
+                font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(5, 0))
+
+    def apply_filter():
+        """Re-load log file with current filters and save filter settings"""
+        load_log_file(reload_all=True)
+        save_gui_config()
+
+    # Create level checkboxes in a compact layout
+    level_grid_frame = ctk.CTkFrame(levels_frame)
+    level_grid_frame.pack(fill="x", padx=5, pady=5)
+
+    for i, level in enumerate(log_filters):
+        chk = ctk.CTkCheckBox(
+            master=level_grid_frame,
+            text=level,
+            variable=log_filters[level],
+            command=apply_filter,
+            font=ctk.CTkFont(size=10)
+        )
+        # Arrange in 2 columns for compactness
+        row = i % 3
+        col = i // 3
+        chk.grid(row=row, column=col, sticky="w", padx=2, pady=1)
+
+    # Module filters section - FIXED: More responsive layout
+    modules_frame = ctk.CTkFrame(filters_main_frame)
+    modules_frame.pack(side="left", fill="both", expand=True, padx=(2, 5))
+    
+    ctk.CTkLabel(modules_frame, text="Modules:", 
+                font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(5, 0))
+
+    # FIXED: Scrollable frame for modules that adapts to window size
+    module_scroll_frame = ctk.CTkScrollableFrame(modules_frame, height=60)
+    module_scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+    # Calculate optimal columns based on number of modules
+    modules_per_column = max(3, len(LOG_MODULES) // 4)  # At least 3, but try to fit in 4 columns
+
+    for i, module in enumerate(LOG_MODULES):
+        col = i // modules_per_column
+        row = i % modules_per_column
         
-    except Exception as e:
-        error(f"Invalid shortcut format: {e}")
-        # Reset to previous value
-        shortcut_vars[shortcut_type].set(config['Shortcuts'].get(shortcut_type))
-        messagebox.showerror("Invalid Shortcut", f"Invalid shortcut format: {shortcut_vars[shortcut_type].get()}\n\nValid examples: ctrl+q, alt+s, shift+x")
+        chk = ctk.CTkCheckBox(
+            master=module_scroll_frame,
+            text=module,
+            variable=module_filters[module],
+            command=apply_filter,
+            font=ctk.CTkFont(size=10)
+        )
+        chk.grid(row=row, column=col, sticky="w", padx=2, pady=1)
 
-# Mirror Dungeon shortcut
-shortcut_row = ctk.CTkFrame(shortcuts_frame)
-shortcut_row.pack(fill="x", pady=5)
-ctk.CTkLabel(shortcut_row, text="Mirror Dungeon:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-md_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['mirror_dungeon'], width=100)
-md_shortcut_entry.pack(side="left", padx=(0, 10))
-ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-              command=lambda: update_shortcut('mirror_dungeon')).pack(side="left")
+    # Configure grid weights for responsiveness
+    for i in range((len(LOG_MODULES) // modules_per_column) + 1):
+        module_scroll_frame.grid_columnconfigure(i, weight=1)
 
-# Exp shortcut
-shortcut_row = ctk.CTkFrame(shortcuts_frame)
-shortcut_row.pack(fill="x", pady=5)
-ctk.CTkLabel(shortcut_row, text="Exp:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-exp_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['exp'], width=100)
-exp_shortcut_entry.pack(side="left", padx=(0, 10))
-ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-              command=lambda: update_shortcut('exp')).pack(side="left")
+    # Log display area
+    log_text = ctk.CTkTextbox(logs_main_frame, font=ctk.CTkFont(size=11))
+    log_text.pack(fill="both", expand=True, padx=5, pady=5)
+    log_text.configure(state="disabled")  # Make it read-only
 
-# Threads shortcut
-shortcut_row = ctk.CTkFrame(shortcuts_frame)
-shortcut_row.pack(fill="x", pady=5)
-ctk.CTkLabel(shortcut_row, text="Threads:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-threads_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['threads'], width=100)
-threads_shortcut_entry.pack(side="left", padx=(0, 10))
-ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-              command=lambda: update_shortcut('threads')).pack(side="left")
+    # For tracking file position between reloads
+    last_file_position = 0
+    
+    def should_display_line(line):
+        """Check if the line should be displayed based on filters"""
+        # Check log level filters
+        if " - DEBUG - " in line and not log_filters["DEBUG"].get():
+            return False
+        elif " - INFO - " in line and not log_filters["INFO"].get():
+            return False
+        elif " - WARNING - " in line and not log_filters["WARNING"].get():
+            return False
+        elif " - ERROR - " in line and not log_filters["ERROR"].get():
+            return False
+        elif " - CRITICAL - " in line and not log_filters["CRITICAL"].get():
+            return False
+        
+        # Check module filters
+        module_found = False
+        for module, pattern in LOG_MODULES.items():
+            if f" - {pattern} - " in line:
+                module_found = True
+                if not module_filters[module].get():
+                    return False
+                break
+        else:
+            # If no specific module was found, check the "Other" filter
+            if not module_filters["Other"].get():
+                return False
+        
+        # Filter out noisy messages
+        if filtered_messages_enabled:
+            # Skip if message contains any filtered text
+            for filtered_msg in FILTERED_MESSAGES:
+                if filtered_msg in line:
+                    return False
+                
+            # Skip pre-checked statuses logs
+            if re.search(r"Loaded pre-checked statuses: .+", line):
+                return False
+        
+        return True
+    
+    def load_log_file(reload_all=False):
+        """Load log file into display, optionally only loading new content"""
+        nonlocal last_file_position
+        
+        try:
+            if not os.path.exists(LOG_FILENAME):
+                return
+                
+            current_size = os.path.getsize(LOG_FILENAME)
+            
+            # If file was truncated or reload_all requested, start from beginning
+            if reload_all or current_size < last_file_position:
+                log_text.configure(state="normal")
+                log_text.delete("1.0", "end")
+                last_file_position = 0
+            
+            # If there's new content
+            if current_size > last_file_position:
+                with open(LOG_FILENAME, 'r', encoding='utf-8', errors='replace') as f:
+                    # Seek to where we left off
+                    f.seek(last_file_position)
+                    # Only read new lines
+                    new_lines = f.readlines()
+                
+                # Update tracking position
+                last_file_position = current_size
+                
+                # Process and add only the new lines
+                if new_lines:
+                    log_text.configure(state="normal")
+                    for line in new_lines:
+                        # Apply filters to the line
+                        if should_display_line(line):
+                            log_text.insert("end", line)
+                    
+                    # Scroll to end to show new content
+                    log_text.see("end")
+                    log_text.configure(state="disabled")
+        except Exception as e:
+            error(f"Error loading log file: {e}")
 
-# Start Battle shortcut
-shortcut_row = ctk.CTkFrame(shortcuts_frame)
-shortcut_row.pack(fill="x", pady=5)
-ctk.CTkLabel(shortcut_row, text="Start Battle:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-battle_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['battle'], width=100)
-battle_shortcut_entry.pack(side="left", padx=(0, 10))
-ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-              command=lambda: update_shortcut('battle')).pack(side="left")
+    # Control buttons - FIXED: Responsive button layout
+    button_frame = ctk.CTkFrame(logs_main_frame)
+    button_frame.pack(fill="x", padx=5, pady=(0, 5))
 
-# Call Function shortcut
-shortcut_row = ctk.CTkFrame(shortcuts_frame)
-shortcut_row.pack(fill="x", pady=5)
-ctk.CTkLabel(shortcut_row, text="Call Function:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-call_function_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['call_function'], width=100)
-call_function_shortcut_entry.pack(side="left", padx=(0, 10))
-ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-              command=lambda: update_shortcut('call_function')).pack(side="left")
+    def clear_gui_logs():
+        """Clear only the log display in the GUI"""
+        log_text.configure(state="normal")
+        log_text.delete("1.0", "end")
+        log_text.configure(state="disabled")
+        info("GUI log display cleared")
 
-# Terminate Functions shortcut
-shortcut_row = ctk.CTkFrame(shortcuts_frame)
-shortcut_row.pack(fill="x", pady=5)
-ctk.CTkLabel(shortcut_row, text="Terminate Functions:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-terminate_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['terminate_functions'], width=100)
-terminate_shortcut_entry.pack(side="left", padx=(0, 10))
-ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-              command=lambda: update_shortcut('terminate_functions')).pack(side="left")
+    def clear_log_file():
+        """Clear the content of the log file on disk"""
+        try:
+            # Close and reopen the log file in write mode to truncate it
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    handler.close()
+                    
+            # Truncate the file
+            with open(LOG_FILENAME, 'w') as f:
+                f.write("")
+                
+            # Reinitialize the file handler
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    handler.stream = open(handler.baseFilename, handler.mode)
+            
+            # Refresh the display
+            load_log_file(reload_all=True)
+        except Exception as e:
+            error(f"Error clearing log file: {e}")
+            messagebox.showerror("Error", f"Failed to clear log file: {e}")
 
-# Help text for keyboard shortcuts
-shortcut_help = ctk.CTkLabel(shortcuts_frame, text="Format examples: ctrl+q, alt+s, shift+x", 
-                            font=ctk.CTkFont(size=12), text_color="gray")
-shortcut_help.pack(pady=(5, 10))
+    # Buttons with responsive layout
+    clear_gui_logs_btn = ctk.CTkButton(button_frame, text="Clear GUI", command=clear_gui_logs, width=100)
+    clear_gui_logs_btn.pack(side="left", padx=5, pady=5)
 
-# 4. Theme selection section
-ctk.CTkLabel(settings_scroll, text="Theme", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
-theme_dropdown = ctk.CTkOptionMenu(
-    master=settings_scroll,
-    variable=theme_var,
-    values=list(THEMES.keys()),
-    width=200,
-    font=ctk.CTkFont(size=16),
-    command=lambda _: apply_theme()
-)
-theme_dropdown.pack(pady=(0, 15))
+    clear_log_file_btn = ctk.CTkButton(button_frame, text="Clear File", command=clear_log_file, width=100)
+    clear_log_file_btn.pack(side="left", padx=5, pady=5)
 
-# Setting up the Help tab
+    reload_btn = ctk.CTkButton(button_frame, text="Reload", command=lambda: load_log_file(reload_all=True), width=100)
+    reload_btn.pack(side="left", padx=5, pady=5)
+
+    # Auto-reload toggle
+    auto_reload_var = ctk.BooleanVar(value=True)  # Default to on
+    auto_reload_switch = ctk.CTkSwitch(
+        master=button_frame,
+        text="Auto-reload",
+        variable=auto_reload_var,
+        onvalue=True,
+        offvalue=False
+    )
+    auto_reload_switch.pack(side="right", padx=5, pady=5)
+
+    # Create and add the optimized handler with filters
+    log_handler = OptimizedLogHandler(log_text, log_filters, module_filters)
+
+    # Add the handler to the ROOT logger to capture logs from all scripts
+    root_logger = logging.getLogger()
+    root_logger.addHandler(log_handler)
+
+    # Auto-reload function that just clicks the reload button
+    def auto_reload_logs():
+        """Automatically reload logs when the logs tab is active"""
+        if logs_tab_loaded and tabs.get() == "Logs" and auto_reload_var.get():
+            load_log_file(reload_all=False)  # Only load new content
+        
+        # Schedule next reload
+        root.after(500, auto_reload_logs)
+    
+    # Load initial content and start auto-reload
+    load_log_file(reload_all=True)
+    auto_reload_logs()
+
+    logs_tab_loaded = True
+
+# Setting up the Help tab (lightweight, no lazy loading needed)
 help_scroll = ctk.CTkScrollableFrame(master=tab_help)
 help_scroll.pack(fill="both", expand=True)
 
@@ -1454,195 +2129,38 @@ try:
         help_text.insert("1.0", "Help.txt file not found. Please create this file with usage instructions.")
     
     help_text.configure(state="disabled")  # Make it read-only
+
+except Exception as e:
+    error(f"Error loading help text: {e}")
+    help_text.insert("1.0", f"Error loading Help.txt: {e}")
+    help_text.configure(state="disabled")  # Make it read-only
+
 except Exception as e:
     error(f"Error loading help text: {e}")
     help_text.insert("1.0", f"Error loading Help.txt: {e}")
     help_text.configure(state="disabled")
 
-# Setting up the Logs tab
-logs_frame = ctk.CTkFrame(tab_logs)
-logs_frame.pack(fill="both", expand=True, padx=10, pady=10)
+# Add Discord invite button at bottom of Help tab
+discord_button = ctk.CTkButton(help_scroll, text="Join my Discord", command=join_discord)
+discord_button.pack(pady=10)
 
-# Create a text widget for displaying logs
-log_text = ctk.CTkTextbox(logs_frame, height=700, width=920, font=ctk.CTkFont(size=12))
-log_text.pack(fill="both", expand=True)
-log_text.configure(state="disabled")  # Make it read-only
-
-# Create filter control panel for log visibility
-filter_frame = ctk.CTkFrame(logs_frame)
-filter_frame.pack(fill="x", pady=(0, 10))
-
-def apply_filter():
-    """Re-load log file with current filters and save filter settings"""
-    load_log_file()
-    save_gui_config()
-
-# Create filters in a single section
-filter_section = ctk.CTkFrame(filter_frame)
-filter_section.pack(fill="x", pady=5, padx=5)
-
-# Create sections for log levels and modules
-left_panel = ctk.CTkFrame(filter_section)
-left_panel.pack(side="left", fill="y", padx=10)
-
-right_panel = ctk.CTkFrame(filter_section)
-right_panel.pack(side="left", fill="y", padx=10)
-
-# Add filter toggle for noise reduction
-ctk.CTkLabel(filter_section, text="Clean Logs:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=20)
-filter_toggle = ctk.CTkSwitch(
-    master=filter_section,
-    text="",
-    variable=ctk.BooleanVar(value=filtered_messages_enabled),
-    command=lambda: toggle_filtered_messages(),
-    onvalue=True,
-    offvalue=False
-)
-filter_toggle.pack(side="left", padx=5)
-
-def toggle_filtered_messages():
-    """Toggle filtering of noisy messages"""
-    global filtered_messages_enabled
-    filtered_messages_enabled = filter_toggle.get()
-    save_gui_config()
-    load_log_file()  # Reload logs with new filter setting
-
-# Add log level filters
-ctk.CTkLabel(left_panel, text="Show log levels:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=5, pady=5)
-
-level_filter_frame = ctk.CTkFrame(left_panel)
-level_filter_frame.pack(fill="x", padx=5)
-
-# Create checkboxes for each log level in one row
-for level in log_filters:
-    chk = ctk.CTkCheckBox(
-        master=level_filter_frame,
-        text=level,
-        variable=log_filters[level],
-        command=apply_filter,
-        font=ctk.CTkFont(size=12)
-    )
-    chk.pack(anchor="w", padx=5, pady=2)
-
-# Add module filters
-ctk.CTkLabel(right_panel, text="Show modules:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=5, pady=5)
-
-# Create a grid layout for module checkboxes
-module_filter_frame = ctk.CTkFrame(right_panel)
-module_filter_frame.pack(fill="x", padx=5)
-
-# Calculate number of modules per column (3 columns)
-modules_per_column = len(LOG_MODULES) // 3 + (1 if len(LOG_MODULES) % 3 > 0 else 0)
-
-# Organize module checkboxes in three columns
-for i, module in enumerate(LOG_MODULES):
-    col = i // modules_per_column
-    row = i % modules_per_column
-    
-    chk = ctk.CTkCheckBox(
-        master=module_filter_frame,
-        text=module,
-        variable=module_filters[module],
-        command=apply_filter,
-        font=ctk.CTkFont(size=12)
-    )
-    chk.grid(row=row, column=col, sticky="w", padx=5, pady=2)
-
-# Create and add the custom handler with filters
-text_handler = TextWidgetHandler(log_text, log_filters, module_filters)
-
-# Add the handler to the ROOT logger to capture logs from all scripts
-root_logger = logging.getLogger()
-root_logger.addHandler(text_handler)
-
-# Create log file monitor
-log_monitor = LogFileMonitor(LOG_FILENAME, log_text, log_filters, module_filters)
-
-# Create log control button panel
-logs_button_frame = ctk.CTkFrame(logs_frame)
-logs_button_frame.pack(fill="x", pady=(10, 0))
-
-def clear_gui_logs():
-    """Clear only the log display in the GUI"""
-    log_text.configure(state="normal")
-    log_text.delete("1.0", "end")
-    log_text.configure(state="disabled")
-    info("GUI log display cleared")
-
-# GUI log clearing button
-clear_gui_logs_btn = ctk.CTkButton(logs_button_frame, text="Clear GUI Logs", command=clear_gui_logs)
-clear_gui_logs_btn.pack(side="left", padx=5)
-
-def clear_log_file():
-    """Clear the content of the log file on disk"""
-    try:
-        # Close and reopen the log file in write mode to truncate it
-        for handler in logger.handlers:
-            if isinstance(handler, logging.FileHandler):
-                handler.close()
-                
-        # Truncate the file
-        with open(LOG_FILENAME, 'w') as f:
-            f.write("")
-            
-        # Reinitialize the file handler
-        for handler in logger.handlers:
-            if isinstance(handler, logging.FileHandler):
-                handler.stream = open(handler.baseFilename, handler.mode)
-                
-        # Reset the log monitor position
-        log_monitor.last_position = 0
-                
-        info("Log file cleared")
-        
-        # Refresh the display
-        load_log_file()
-    except Exception as e:
-        error(f"Error clearing log file: {e}")
-        messagebox.showerror("Error", f"Failed to clear log file: {e}")
-
-# Log file clearing button
-clear_log_file_btn = ctk.CTkButton(logs_button_frame, text="Clear Log File", command=clear_log_file)
-clear_log_file_btn.pack(side="left", padx=5)
-
-def load_log_file():
-    """Load existing log file into the display with filters applied"""
-    try:
-        # Reset the file monitor's position to 0 to force a full reload
-        log_monitor.last_position = 0
-        
-        with open(LOG_FILENAME, 'r') as f:
-            log_lines = f.readlines()
-        
-        # Clear current display
-        log_text.configure(state="normal")
-        log_text.delete("1.0", "end")
-        
-        # Apply filters and add matching lines
-        for line in log_lines:
-            # Process the line with the same filtering logic as the monitor
-            log_monitor._process_log_line(line)
-        
-        # Update the monitor's position to the end of the file
-        log_monitor.last_position = os.path.getsize(LOG_FILENAME)
-        
-        log_text.see("end")  # Scroll to the end
-        log_text.configure(state="disabled")
-        info("Loaded existing log file with filters applied")
-    except Exception as e:
-        error(f"Error loading log file: {e}")
-
-# Log file loading button
-load_logs_btn = ctk.CTkButton(logs_button_frame, text="Load Log File", command=load_log_file)
-load_logs_btn.pack(side="left", padx=5)
+# FIXED: Handle theme restart - load Settings tab if needed
+if load_settings_on_startup:
+    tabs.set("Settings")
+    # Manually trigger the Settings tab loading since set() doesn't trigger the callback
+    root.after(10, load_settings_tab)
 
 # Register keyboard shortcuts based on config values
 register_keyboard_shortcuts()
 
-# Process monitoring function
+# =====================================================================
+# OPTIMIZED PROCESS MONITORING AND APPLICATION MANAGEMENT
+# =====================================================================
+
+# Optimized process monitoring function
 def check_processes():
     """Check if processes are still running and update UI accordingly"""
-    global process, exp_process, threads_process, function_process_list
+    global process, exp_process, threads_process, function_process_list, battle_process
     
     # Check Mirror Dungeon process
     if process is not None:
@@ -1668,7 +2186,15 @@ def check_processes():
             threads_process = None
             threads_start_button.configure(text="Start")
     
-    # Check Function Runner processes
+    # Check Battle process specifically
+    if battle_process is not None:
+        if battle_process.poll() is not None:
+            # Battle process has ended
+            info(f"Battle process ended with code: {battle_process.returncode}")
+            # Clear the battle process variable
+            battle_process = None
+    
+    # Check all Function Runner processes
     for proc in function_process_list[:]:  # Use a copy of the list for iteration
         if proc.poll() is not None:
             # Process has ended
@@ -1685,50 +2211,86 @@ def check_processes():
     # Schedule next check
     root.after(1000, check_processes)
 
-# Application exit handling
+# OPTIMIZED: Much faster application exit handling
 def on_closing():
-    """Handle application exit cleanup"""
-    info("Application closing")
-    
-    # Save current configuration with window size
-    save_gui_config()
-    
-    # Clean up text handler
-    text_handler.close()
-    
-    # Stop log file monitoring
-    log_monitor.stop_monitoring()
-    
-    # Kill any running processes
-    if process:
-        kill_bot()
-    if exp_process:
-        kill_exp_bot()
-    if threads_process:
-        kill_threads_bot()
-    
-    # Terminate all function processes
-    kill_function_runner()
+    """Handle application exit cleanup - OPTIMIZED VERSION"""
+    try:
+        info("Application closing")
         
-    root.destroy()
+        # OPTIMIZATION: Only kill processes if user wants us to
+        if kill_processes_var.get():
+            try:
+                # Kill processes quickly and don't wait for confirmation
+                if process:
+                    os.kill(process.pid, signal.SIGTERM)
+                if exp_process:
+                    os.kill(exp_process.pid, signal.SIGTERM)
+                if threads_process:
+                    os.kill(threads_process.pid, signal.SIGTERM)
+                for proc in function_process_list:
+                    if proc and proc.poll() is None:
+                        os.kill(proc.pid, signal.SIGTERM)
+                info("Killed all processes")
+            except Exception as e:
+                error(f"Error killing processes: {e}")
+        
+        # OPTIMIZATION: Clean up threads quickly
+        try:
+            if 'log_handler' in globals() and log_handler:
+                log_handler.close()
+        except Exception:
+            pass  # Ignore cleanup errors
+        
+        # OPTIMIZATION: No config saving - settings are saved in real-time
+        
+    except Exception as e:
+        print(f"Error during application close: {e}")
+    finally:
+        # OPTIMIZATION: Fast exit
+        os._exit(0)
 
 # Set the callback for window close
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
-# Start the application
+# =====================================================================
+# OPTIMIZED APPLICATION STARTUP
+# =====================================================================
+
+# OPTIMIZED: Minimal startup - most content is lazy-loaded
 if __name__ == "__main__":
-    # Use deferred tasks to improve startup time
     def start_application():
-        # Load logs after UI is visible
-        load_log_file()
-        
-        # Start log file monitoring
-        log_monitor.start_monitoring(root)
-        
-        # Start process monitoring
-        check_processes()
+        """Initialize the application after GUI is loaded - OPTIMIZED VERSION"""
+        try:
+            # OPTIMIZATION: Only start process monitoring, don't load logs yet
+            check_processes()
+            
+            # MOVED: Check for updates if enabled (MUST work without Settings tab loaded)
+            if UPDATER_AVAILABLE:
+                # Delay the check slightly to ensure UI is fully loaded
+                if auto_update_var.get():
+                    root.after(1000, lambda: auto_update(
+                        "Kryxzort", 
+                        "GuiSirSquirrelAssistant", 
+                        create_backup=create_backups_var.get(),
+                        callback=lambda success, message: (
+                            update_status_label.configure(text=f"Update Status: {message}")
+                            if 'update_status_label' in globals() else None
+                        )
+                    ))
+                elif update_notifications_var.get():
+                    # Only check for updates but don't apply them
+                    root.after(1000, lambda: check_for_updates(
+                        "Kryxzort", 
+                        "GuiSirSquirrelAssistant", 
+                        callback=check_updates_callback
+                    ))
+        except Exception as e:
+            error(f"Error in start_application: {e}")
     
-    # Schedule startup tasks with a small delay
-    root.after(10, start_application)
+    # Make sure "all data" folder exists in the correct location
+    os.makedirs(BASE_PATH, exist_ok=True)
+    
+    # OPTIMIZATION: Shorter delay for faster startup
+    root.after(5, start_application)
     
     root.mainloop()

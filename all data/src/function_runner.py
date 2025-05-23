@@ -9,12 +9,32 @@ import threading
 import signal
 import os
 
-# Configure logging
+# Determine if running as executable or script
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        return os.path.dirname(sys.executable)
+    else:
+        # Running as script
+        folder_path = os.path.dirname(os.path.abspath(__file__))
+        # Check if we're in the src folder or main folder
+        if os.path.basename(folder_path) == 'src':
+            return os.path.dirname(folder_path)
+        return folder_path
+
+# Get base path for resource access
+BASE_PATH = get_base_path()
+
+# Setting up basic logging configuration
+LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILENAME)
+    ]
 )
-logger = logging.getLogger("function_runner")
+logger = logging.getLogger(__name__)
 
 # Lock for synchronized access to shared resources
 lock = threading.Lock()
@@ -39,7 +59,7 @@ if hasattr(signal, 'SIGBREAK'):  # Windows-specific
 def parse_function_call(function_string):
     """Parse a function call string like 'module.func(arg1, arg2)' into module, function name, and args"""
     # Match function pattern with or without arguments
-    pattern = r"([^()]+)(?:\((.*)\))?"
+    pattern = r"([^\(\)]+)(?:\((.*)\))?"
     match = re.match(pattern, function_string)
     
     if not match:
@@ -154,26 +174,10 @@ def main():
     # Run the first function call in a thread
     thread = run_function_in_thread(function_string)
     
-    # Keep the script running to accept more commands
-    logger.info("Function runner is now waiting for additional commands...")
+    logger.info("Function runner is now waiting...")
     try:
         while running:
-            # Check if there's a new command on stdin
-            if len(sys.argv) > 2 and sys.argv[2] == "--listen-stdin":
-                try:
-                    # Non-blocking check for new lines from stdin
-                    import select
-                    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if rlist:
-                        command = sys.stdin.readline().strip()
-                        if command:
-                            logger.info(f"Received new command: {command}")
-                            thread = run_function_in_thread(command)
-                except Exception as e:
-                    logger.error(f"Error processing stdin: {e}")
-            else:
-                # Just sleep if not listening to stdin
-                time.sleep(0.1)
+            time.sleep(0.1)
                 
     except KeyboardInterrupt:
         logger.info("Function runner terminated by user")

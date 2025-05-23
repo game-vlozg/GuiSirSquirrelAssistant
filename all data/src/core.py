@@ -2,6 +2,10 @@ import sys
 import os
 from sys import exit
 import logging
+import time
+import pyautogui
+
+screenWidth, screenHeight = pyautogui.size()
 
 # Determine if running as executable or script
 def get_base_path():
@@ -88,12 +92,23 @@ def battle():
     """Handles battles by mashing winrate, also handles skill checks and end of battle loading"""
     logger.info(f"Starting Battle")
     battle_finished = 0
+    winrate_visible_start = None
+    winrate_timeout = 5
+    winrate_invisible_start = None
+    winrate_invisible_timeout = 30
+    
     while(battle_finished != 1):
         if common.element_exist("pictures/general/loading.png"): #Checks for loading screen to end the while loop
             common.mouse_up()
+            if common.element_exist("pictures/battle/winrate.png"):
+                battle()
+                return
             logger.info(f"Loading")
             battle_finished = 1
             common.sleep(3)
+            logger.debug(f"finished battle")
+            return
+            
         if common.element_exist("pictures/events/skip.png"): #Checks for special battle skill checks prompt then calls skill check functions
             common.mouse_up()
             while(True):
@@ -104,14 +119,41 @@ def battle():
                 if common.element_exist("pictures/events/skill_check.png"):
                     skill_check()
                     break
+                    
         if common.element_exist("pictures/battle/winrate.png"):
-            common.mouse_up()
-            x,y = common.uniform_scale_coordinates(2165,1343)
-            common.mouse_move_click(x,y)
-            common.key_press("p") #win rate keyboard key
-            ego_check()
-            common.key_press("enter") #Battle Start key
-            common.mouse_down()
+            winrate_invisible_start = None
+            current_time = time.time()
+            if winrate_visible_start is None:
+                winrate_visible_start = current_time
+            
+            # Check if winrate has been visible for too long and might be stuck
+            elif current_time - winrate_visible_start > winrate_timeout:
+                logger.warning(f"Winrate screen stuck for {winrate_timeout} seconds, attempting direct click")
+                common.mouse_up()
+                common.click_matching("pictures/battle/winrate.png")
+                common.key_press("enter")
+                winrate_visible_start = None
+        else: # Check if winrate hasn't been visible for too long and might be covered
+            winrate_visible_start = None
+            current_time = time.time()
+            if winrate_invisible_start is None:
+                winrate_invisible_start = current_time
+            
+            elif current_time - winrate_invisible_start > winrate_invisible_timeout:
+                logger.warning(f"didnt see winrate for {winrate_invisible_timeout} seconds, clicking middle of the screen")
+                common.mouse_up()
+                common.mouse_move_click(screenWidth * 0.5,screenHeight * 0.5)
+                winrate_invisible_start = None
+            
+        # Normal winrate handling
+        common.mouse_up()
+        x,y = common.uniform_scale_coordinates(2165,1343)
+        common.mouse_move_click(x,y)
+        common.key_press("p")
+        ego_check()
+        common.key_press("enter")
+        common.mouse_down()
+
         if common.element_exist("pictures/general/server_error.png"):
             common.mouse_up()
             logger.info(f"Lost Connection to Server, Reconnecting")

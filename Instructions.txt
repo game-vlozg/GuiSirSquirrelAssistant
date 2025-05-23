@@ -1,9 +1,0 @@
-number of runs means how many times to do mirror dungeon
-if you put 1 then it will do it 1 time and then stop, put number according to your enkaphalin so if you have 10 enkaphalin then you should put 2 in the runs
-
-your team means which preset, so first of all go ingame into sinners and then in teams choose whichever you prefer, then at the top you will see that team's name and a pencil icon beside it, click it and name it to one of the statuses in Your team in the macro and then in the macro click tick on the name you chose, ex - burn
-and then in the macro you will see "assign sinners to name" expand the one you chose, for this case burn, and then assign each number to the sinner so if you choose 1. Ishmael 2. hong lu 3. gregor then ingame it will choose in that order
-
-to start the macro go into the main menu of limbus company, the one named Window and then click start in the macro, have fun macroing
-
-for a better instruction please refer to the help section in gui

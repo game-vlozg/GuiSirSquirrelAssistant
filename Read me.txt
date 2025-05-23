@@ -1,8 +1,0 @@
-the original macro was made by sirsquirrel
-this is just a fork with gui to make it easier (also added exp and threads automation now)
-
-make sure to have python before using
-
-please let me know of any errors on discord
-my username is Kryxzort
-send me a friend request

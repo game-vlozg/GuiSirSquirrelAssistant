@@ -1,7 +1,6 @@
 import sys
 import os
 import logging
-
 # Determine if running as executable or script
 def get_base_path():
     if getattr(sys, 'frozen', False):

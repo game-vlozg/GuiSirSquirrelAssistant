@@ -160,6 +160,9 @@ def click_continue():
     continue_clicked = False
 
     while time.time() - start_time < 60:  # 60 second maximum check time
+        if common.element_exist("pictures/battle/winrate.png"):
+            core.battle()
+            return
         if common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png"):
             logger.info(f"Confirmation dialog found, clicking it")
             common.click_matching("pictures/CustomAdded1080p/luxcavation/thread/confirminverted.png")
@@ -227,7 +230,14 @@ def squad_select_lux(mirror_instance):
         common.sleep(0.5)
         
     logger.info(f"Battle screen detected, entering battle")
-    mirror.battle()
+    core.battle()
+    common.mouse_move(200,200)
+    if common.element_exist("pictures/battle/winrate.png"):
+        core.battle()
+        return
+    # After squad selection and battle finished:
+    logger.info(f"Battle completed, checking for confirmation dialog")
+    click_continue()
 
 def navigate_to_lux():
     """
@@ -344,7 +354,7 @@ def navigate_to_exp(Stage):
         logger.warning(f"Failed to click Stage {Stage}, retrying")
         if common.element_exist("pictures/battle/winrate.png"):
             logger.info(f"Battle screen detected, entering battle")
-            mirror.battle()
+            core.battle()
             logger.info(f"Battle completed, checking for confirmation dialog")
             click_continue()
             logger.info(f"Exp Stage {Stage} navigation and battle complete")
@@ -362,11 +372,7 @@ def navigate_to_exp(Stage):
     if common.element_exist("pictures/mirror/general/squad_select.png"):
         logger.info(f"Squad select screen detected")
         squad_select_lux(m)
-        
-        # After squad selection:
-        logger.info(f"Battle completed, checking for confirmation dialog")
-        click_continue()
-
+        common.key_press(Key="esc",presses=2)
     else:
         logger.warning(f"Squad select screen not detected, retrying")
         common.key_press(Key="esc",presses=2)
@@ -443,11 +449,8 @@ def navigate_to_threads(Difficulty):
     if common.element_exist("pictures/mirror/general/squad_select.png"):
         logger.info(f"Squad select screen detected")
         squad_select_lux(m)
-            
-        # After squad selection and battle finished:
-        logger.info(f"Battle completed, checking for confirmation dialog")
-        click_continue()
-
+        logger.info(f"Difficulty {Difficulty} navigation and battle complete")
+        common.key_press(Key="esc",presses=2)
     else:
         logger.warning(f"Squad select screen not detected, retrying")
         common.key_press(Key="esc",presses=2)
@@ -455,5 +458,3 @@ def navigate_to_threads(Difficulty):
         common.key_press(Key="esc",presses=2)
         navigate_to_threads(Difficulty)
         return
-        
-    logger.info(f"Difficulty {Difficulty} navigation and battle complete")

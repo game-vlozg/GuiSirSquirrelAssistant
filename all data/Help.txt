@@ -24,6 +24,11 @@ make sure to be in fullscreen (alt+enter) ingame
 the modifications were built in max graphics
 you can try lower graphics and it might still work depending on how much did you lower it, but if anything is not working correctly then just do max graphics.
 
+chain functions section:
+it uses the stage/difficulty you put in the individual tab
+and uhh yeah it just chains functions
+useful for when you wanna do stuff like 3 threads (per day bonus) then do 2 exp for maybe like bp and then mirror dungeon
+
 call a function section:
 usually ignore this unless you are a advanced user
 used to call functions from any module
