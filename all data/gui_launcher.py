@@ -16,7 +16,7 @@ import configparser
 import re
 import webbrowser
 
-DISCORD_INVITE = "https://discord.gg/AmN2jYdfZX"
+DISCORD_INVITE = "https://discord.gg/35tfHCdKWc"
 def join_discord():
     webbrowser.open(DISCORD_INVITE)
 
