@@ -1,4 +1,6 @@
-this is a fork of sirsquirrelassistant's macro but now with a gui + threads and exp automation + config + settings + a whole lotta shit!! (took 27 hours) clap plz, this will probably be updated time to time
+this is a fork of sirsquirrelassistant's macro but now with a gui + threads and exp automation + config + settings + a whole lotta shit!! (took 27 hours) clap plz, thiill probably be updated time to time
+
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/Kryxzort/GuiSirSquirrelAssistant?utm_source=oss&utm_medium=github&utm_campaign=Kryxzort%2FGuiSirSquirrelAssistant&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 
 orignal README by sirsquirrel -
