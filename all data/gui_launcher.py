@@ -230,6 +230,23 @@ logs_tab_loaded = False
 # HELPER FUNCTIONS
 # =====================================================================
 
+def load_checkbox_data():
+    """Load checkbox variables at startup without creating UI elements"""
+    global checkbox_vars
+    
+    # Only load if not already loaded
+    if checkbox_vars:
+        return
+    
+    prechecked = load_initial_selections()
+    
+    # Create BooleanVar objects for each team status without creating UI
+    for name, row, col in TEAM_ORDER:
+        var = ctk.BooleanVar(value=name in prechecked)
+        checkbox_vars[name] = var
+    
+    debug(f"Loaded checkbox data at startup. Pre-checked: {list(prechecked)}")
+
 # Shared error handling decorator
 def safe_execute(func):
     """Decorator for consistent error handling"""
@@ -733,6 +750,11 @@ class OptimizedLogHandler(logging.Handler):
 @safe_execute
 def save_selected_statuses():
     """Save selected checkboxes to file with most recent at the bottom"""
+    # Safety check - this shouldn't happen anymore but just in case
+    if not checkbox_vars:
+        warning("Attempted to save statuses before checkbox data was loaded")
+        return
+    
     selected = [name for name, var in checkbox_vars.items() if var.get()]
     
     # Try to read existing selections to determine order
@@ -1563,10 +1585,14 @@ def load_settings_tab():
     team_frame = ctk.CTkFrame(settings_scroll)
     team_frame.pack(pady=(0, 15))
 
-    prechecked = load_initial_selections()
+    # Use existing checkbox_vars if they exist, otherwise create them
+    if not checkbox_vars:
+        # This shouldn't happen since we load at startup, but just in case
+        load_checkbox_data()
 
+    # Create UI elements using existing checkbox variables
     for name, row, col in TEAM_ORDER:
-        var = ctk.BooleanVar(value=name in prechecked)
+        var = checkbox_vars[name]  # Use existing variable
         chk = ctk.CTkCheckBox(
             master=team_frame,
             text=name.capitalize(),
@@ -1575,7 +1601,7 @@ def load_settings_tab():
             font=ctk.CTkFont(size=16)
         )
         chk.grid(row=row, column=col, padx=5, pady=2, sticky="w")
-        checkbox_vars[name] = var
+        # Note: checkbox_vars[name] is already set, no need to set it again
 
     # 2. Sinner assignment section
     ctk.CTkLabel(settings_scroll, text="Assign Sinners to Name", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
@@ -2135,11 +2161,6 @@ except Exception as e:
     help_text.insert("1.0", f"Error loading Help.txt: {e}")
     help_text.configure(state="disabled")  # Make it read-only
 
-except Exception as e:
-    error(f"Error loading help text: {e}")
-    help_text.insert("1.0", f"Error loading Help.txt: {e}")
-    help_text.configure(state="disabled")
-
 # Add Discord invite button at bottom of Help tab
 discord_button = ctk.CTkButton(help_scroll, text="Join my Discord", command=join_discord)
 discord_button.pack(pady=10)
@@ -2261,6 +2282,9 @@ if __name__ == "__main__":
     def start_application():
         """Initialize the application after GUI is loaded - OPTIMIZED VERSION"""
         try:
+            # Load checkbox data at startup (before any automation can run)
+            load_checkbox_data()
+            
             # OPTIMIZATION: Only start process monitoring, don't load logs yet
             check_processes()
             
