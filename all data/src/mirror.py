@@ -691,7 +691,7 @@ class Mirror:
                     break
 
                 if _ != 2:
-                    common.mouse_move_click(200, 200)
+                    common.mouse_move_click(50, 50)
                     common.sleep(1)
                     common.click_matching("pictures/mirror/restshop/market/refresh.png")
                     self.logger.debug(f"Restshop: Refreshing Shop")
@@ -702,6 +702,8 @@ class Mirror:
             common.mouse_move_click(50,50)
             common.click_matching("pictures/mirror/restshop/leave.png")
         common.click_matching("pictures/general/confirm_w.png")
+        if common.element_exist("pictures/general/confirm_b.png"):
+            common.click_matching("pictures/general/confirm_b.png")
         return
 
     def upgrade(self,gifts,status,shift_x,shift_y):
