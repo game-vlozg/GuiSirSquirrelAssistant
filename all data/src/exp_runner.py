@@ -8,14 +8,12 @@ import os
 import time
 import logging
 import signal
+import threading
 
-# Determine if running as executable or script
 def get_base_path():
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
         return os.path.dirname(sys.executable)
     else:
-        # Running as script
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Set up paths
@@ -36,49 +34,107 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class ConnectionManager:
+    """Manages connection checking and reconnection"""
+    
+    def __init__(self):
+        self.connection_event = threading.Event()
+        self.connection_event.set()  # Start with connection assumed good
+    
+    def start_connection_monitor(self):
+        """Start the connection monitoring thread"""
+        connection_thread = threading.Thread(target=self._connection_check, daemon=True)
+        connection_thread.start()
+    
+    def _connection_check(self):
+        """Monitor connection status"""
+        from common import element_exist
+        
+        while True:
+            try:
+                if element_exist("pictures/general/connection.png"):
+                    self.connection_event.clear()
+                else:
+                    self.connection_event.set()
+            except Exception as e:
+                logger.error(f"Error in connection check: {e}")
+    
+    def handle_reconnection(self):
+        """Handle reconnection when needed"""
+        try:
+            from core import reconnect
+            from common import element_exist
+            
+            self.connection_event.clear()
+            
+            connection_listener_thread = threading.Thread(target=reconnect)
+            connection_listener_thread.start()
+            connection_listener_thread.join()
+            
+            self.connection_event.set()
+        except Exception as e:
+            logger.error(f"Error in reconnection: {e}")
+
 def signal_handler(sig, frame):
     """Handle termination signals"""
     logger.warning(f"Termination signal received, shutting down...")
     sys.exit(0)
 
-def main():
+def main(runs, stage, shared_vars=None):
     """Main function for exp runner"""
-    # Register signal handlers for clean exit
+    # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
    
-    if len(sys.argv) != 3:
-        logger.error(f"Invalid arguments. Usage: exp_runner.py <runs> <stage>")
-        sys.exit(1)
-   
     try:
-        runs = int(sys.argv[1])
-        stage_arg = sys.argv[2]  # Get the stage argument as string
+        # Use the parameters passed to the function
+        stage_arg = stage  # Instead of sys.argv[2]
         
         # Handle "latest" as a special case
         if stage_arg == "latest":
-            stage = "latest"  # Keep it as string
-            logger.info(f"Starting Exp automation for {runs} runs on Stage {stage}")
+            stage = "latest"
         else:
             # Convert to integer for numeric stages
             stage = int(stage_arg)
-            logger.info(f"Starting Exp automation for {runs} runs on Stage {stage}")
+        
+        # Initialize connection manager
+        connection_manager = ConnectionManager()
+        connection_manager.start_connection_monitor()
        
+        luxcavation_functions.pre_exp_setup(stage, SelectTeam=True)
+        runs = runs - 1
         for i in range(runs):
-            logger.info(f"Starting Exp run {i+1}/{runs} for Stage {stage}")
            
             try:
-                # Call pre_exp_setup to run one iteration
-                luxcavation_functions.pre_exp_setup(stage)
-                logger.info(f"Completed Exp run {i+1}/{runs}")
+                time.sleep(1)
+                # Wait for connection before proceeding (copied from compiled_runner logic)
+                while True:
+                    if connection_manager.connection_event.is_set():
+                        # Connection is good, proceed with run
+                        luxcavation_functions.pre_exp_setup(stage)
+                        break
+                    else:
+                        # Connection lost, wait for it to be restored
+                        connection_manager.connection_event.wait()
+                    
+                    # Check for server errors (copied from compiled_runner)
+                    try:
+                        from common import element_exist
+                        if element_exist("pictures/general/server_error.png"):
+                            connection_manager.handle_reconnection()
+                    except ImportError:
+                        # Handle case where common module isn't available
+                        pass
+                    except Exception as e:
+                        logger.error(f"Error checking for server error: {e}")
+                        
             except Exception as e:
                 logger.error(f"Error during Exp run {i+1}: {e}")
                 # Continue with next run instead of crashing completely
            
-            # Small delay between runs
             time.sleep(2)
        
-        logger.info(f"All {runs} Exp runs completed successfully")
+        
     except Exception as e:
         logger.critical(f"Critical error in Exp runner: {e}")
         return 1
@@ -87,7 +143,17 @@ def main():
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        # Get parameters from command line arguments
+        if len(sys.argv) >= 3:
+            runs = int(sys.argv[1])
+            stage = sys.argv[2]
+        else:
+            logger.error("Usage: exp_runner.py <runs> <stage>")
+            sys.exit(1)
+            
+        sys.exit(main(runs, stage))
     except KeyboardInterrupt:
-        logger.warning(f"Interrupted by user, shutting down...")
         sys.exit(0)
+    except Exception as e:
+        logger.critical(f"Critical error in exp_runner main: {e}")
+        sys.exit(1)

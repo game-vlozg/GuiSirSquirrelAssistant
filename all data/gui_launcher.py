@@ -12,10 +12,10 @@ import threading
 import logging
 import queue
 from threading import Thread
-import configparser
 import re
 import webbrowser
-
+from multiprocessing import Process, Value
+#ez
 DISCORD_INVITE = "https://discord.gg/vccsv4Q4ta"
 def join_discord():
     webbrowser.open(DISCORD_INVITE)
@@ -25,25 +25,19 @@ def join_discord():
 # =====================================================================
 
 def get_correct_base_path():
-    """Get the correct base path for the application with smart directory detection"""
+    """Get application base path"""
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
         base = os.path.dirname(sys.executable)
     else:
-        # Running as script
         base = os.path.dirname(os.path.abspath(__file__))
         
-    # Smart directory detection
     if os.path.basename(base) == "src":
-        # We're in src folder inside all data
-        all_data_dir = os.path.dirname(base)  # Go up 1 level to all data
-        main_dir = os.path.dirname(all_data_dir)  # Go up 1 more level
+        all_data_dir = os.path.dirname(base)
+        main_dir = os.path.dirname(all_data_dir)
     elif os.path.basename(base) == "all data":
-        # We're directly in the all data folder
         all_data_dir = base
         main_dir = os.path.dirname(base)
     else:
-        # We're in the main directory
         all_data_dir = os.path.join(base, "all data")
         main_dir = base
         
@@ -56,12 +50,29 @@ BASE_PATH = ALL_DATA_DIR  # Set BASE_PATH to "all data" folder
 # Add src to Python path for imports
 sys.path.append(os.path.join(BASE_PATH, 'src'))
 
+# Import common module for monitor functions
+import common # type: ignore
+
 # Try to import the updater module
 try:
     from src.updater import check_for_updates, auto_update
     UPDATER_AVAILABLE = True
 except ImportError:
     UPDATER_AVAILABLE = False
+
+class SharedVars:
+    def __init__(self):
+        self.x_offset = Value('i', 0)
+        self.y_offset = Value('i', 0)
+        self.GAME_MONITOR_INDEX = Value('i', 1)
+        self.skip_restshop = Value('b', False)
+        self.skip_ego_check = Value('b', False)
+        self.prioritize_list_over_status = Value('b', False)
+        self.debug_image_matches = Value('b', False)
+        self.hard_mode = Value('b', False)
+        self.convert_images_to_grayscale = Value('b', True)
+        self.reconnection_delay = Value('i', 6)
+        self.reconnect_when_internet_reachable = Value('b', False)
 
 # Define python interpreter path based on whether we're frozen or not
 def get_python_command():
@@ -88,10 +99,177 @@ BATTLER_SCRIPT_PATH = os.path.join(BASE_PATH, "src", "battler.py")
 # Configuration file paths
 CONFIG_DIR = os.path.join(BASE_PATH, "config")
 JSON_PATH = os.path.join(CONFIG_DIR, "squad_order.json")
-SLOW_JSON_PATH = os.path.join(CONFIG_DIR, "slow_squad_order.json")
-STATUS_SELECTION_PATH = os.path.join(CONFIG_DIR, "status_selection.txt")
-GUI_CONFIG_PATH = os.path.join(CONFIG_DIR, "gui_config.txt")
+SLOW_JSON_PATH = os.path.join(CONFIG_DIR, "delayed_squad_order.json")
+STATUS_SELECTION_PATH = os.path.join(CONFIG_DIR, "status_selection.json")
+GUI_CONFIG_PATH = os.path.join(CONFIG_DIR, "gui_config.json")
 HELP_TEXT_PATH = os.path.join(BASE_PATH, "Help.txt")
+
+# Place these after the other config paths and before load_settings_tab
+pack_priority_path = os.path.join(CONFIG_DIR, "pack_priority.json")
+delayed_pack_priority_path = os.path.join(CONFIG_DIR, "delayed_pack_priority.json")
+
+pack_priority_data = {}
+delayed_pack_priority_data = {}
+
+pack_dropdown_vars = {}
+pack_expand_frames = {}
+
+# Pack exceptions paths
+pack_exceptions_path = os.path.join(CONFIG_DIR, "pack_exceptions.json")
+delayed_pack_exceptions_path = os.path.join(CONFIG_DIR, "delayed_pack_exceptions.json")
+
+# Pack exceptions data
+pack_exceptions_data = {}
+delayed_pack_exceptions_data = {}
+pack_exception_vars = {}
+
+# Fuse exceptions paths and data
+fusion_exceptions_path = os.path.join(CONFIG_DIR, "fusion_exceptions.json")
+fusion_exceptions_data = []
+fuse_exception_vars = {}
+fuse_exception_expand_frame = None
+
+# Pack data management functions
+def load_pack_priority():
+    global pack_priority_data
+    if os.path.exists(pack_priority_path):
+        with open(pack_priority_path, "r") as f:
+            pack_priority_data = json.load(f)
+    else:
+        pack_priority_data = {}
+    return pack_priority_data
+
+def save_pack_priority(data):
+    with open(pack_priority_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+def save_delayed_pack_priority(data):
+    with open(delayed_pack_priority_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+def delayed_pack_priority_sync():
+    global delayed_pack_priority_data
+    time.sleep(0.5)
+    delayed_pack_priority_data.update(json.loads(json.dumps(pack_priority_data)))
+    save_delayed_pack_priority(delayed_pack_priority_data)
+
+# Pack exceptions management functions
+def load_pack_exceptions():
+    global pack_exceptions_data
+    if os.path.exists(pack_exceptions_path):
+        with open(pack_exceptions_path, "r") as f:
+            pack_exceptions_data = json.load(f)
+    else:
+        pack_exceptions_data = {}
+    return pack_exceptions_data
+
+def save_pack_exceptions(data):
+    with open(pack_exceptions_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+def save_delayed_pack_exceptions(data):
+    with open(delayed_pack_exceptions_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+def delayed_pack_exceptions_sync():
+    global delayed_pack_exceptions_data
+    time.sleep(0.5)
+    delayed_pack_exceptions_data.update(json.loads(json.dumps(pack_exceptions_data)))
+    save_delayed_pack_exceptions(delayed_pack_exceptions_data)
+
+def update_pack_exceptions_from_toggle(floor, pack):
+    global pack_exceptions_data
+    if floor not in pack_exceptions_data:
+        pack_exceptions_data[floor] = []
+    
+    if pack in pack_exceptions_data[floor]:
+        pack_exceptions_data[floor].remove(pack)
+    else:
+        pack_exceptions_data[floor].append(pack)
+    
+    save_pack_exceptions(pack_exceptions_data)
+    threading.Thread(target=delayed_pack_exceptions_sync, daemon=True).start()
+
+# Fuse exceptions management functions
+def load_fuse_exception_images():
+    """Scan pictures/CustomFuse directory and return all image files"""
+    fuse_dir = os.path.join(BASE_PATH, "pictures", "CustomFuse")
+    image_extensions = ['.png', '.jpg', '.jpeg']
+    fuse_images = []
+    
+    if os.path.exists(fuse_dir):
+        for file in os.listdir(fuse_dir):
+            if any(file.lower().endswith(ext) for ext in image_extensions):
+                # Use forward slashes for cross-platform compatibility
+                full_path = f"pictures/CustomFuse/{file}"
+                fuse_images.append(full_path)
+    
+    return fuse_images
+
+def load_fusion_exceptions():
+    """Load fusion exceptions from JSON file"""
+    global fusion_exceptions_data
+    try:
+        if os.path.exists(fusion_exceptions_path):
+            with open(fusion_exceptions_path, "r") as f:
+                fusion_exceptions_data = json.load(f)
+        else:
+            fusion_exceptions_data = []
+    except:
+        fusion_exceptions_data = []
+    return fusion_exceptions_data
+
+def save_fusion_exceptions():
+    """Save currently toggled-on exceptions to fusion_exceptions.json"""
+    enabled_exceptions = []
+    
+    for image_path, var in fuse_exception_vars.items():
+        if var.get():  # If toggle is ON
+            # Extract just the filename without path and extension
+            # e.g., "pictures/CustomFuse/poise.png" -> "poise"
+            filename = os.path.basename(image_path)
+            filename_without_ext = os.path.splitext(filename)[0]
+            enabled_exceptions.append(filename_without_ext)
+    
+    # Save to JSON file
+    with open(fusion_exceptions_path, 'w') as f:
+        json.dump(enabled_exceptions, f, indent=4)
+    
+    # Update global data
+    global fusion_exceptions_data
+    fusion_exceptions_data = enabled_exceptions
+
+def update_fuse_exception_from_toggle():
+    """Called when any fuse exception toggle is changed"""
+    save_fusion_exceptions()
+
+def update_pack_priority_from_dropdown(floor, idx):
+    entries = pack_dropdown_vars[floor]
+    updated = {}
+    for i, var in enumerate(entries):
+        val = var.get()
+        if val != "None":
+            updated[val] = i + 1
+    pack_priority_data[floor] = updated
+    save_pack_priority(pack_priority_data)
+    threading.Thread(target=delayed_pack_priority_sync, daemon=True).start()
+    debug(f"Updated pack priority for {floor}")
+
+def pack_dropdown_callback(floor, index, *_):
+    try:
+        new_val = pack_dropdown_vars[floor][index].get()
+        if new_val == "None":
+            update_pack_priority_from_dropdown(floor, index)
+            return
+        for i, var in enumerate(pack_dropdown_vars[floor]):
+            if i != index and var.get() == new_val:
+                old_key = next((k for k, v in delayed_pack_priority_data.get(floor, {}).items() if v == index + 1), None)
+                if old_key:
+                    var.set(old_key)
+                break
+        update_pack_priority_from_dropdown(floor, index)
+    except Exception as e:
+        error(f"Error in pack dropdown callback: {e}")
 
 # Create config directory if it doesn't exist
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -169,13 +347,45 @@ FILTERED_MESSAGES = [
 # GLOBAL CONSTANTS
 # =====================================================================
 
-# Available themes for the UI - USING ONLY VALIDATED THEMES THAT EXIST
-THEMES = {
-    "Dark": {"mode": "dark", "theme": "dark-blue"},
-    "Blue Dark": {"mode": "dark", "theme": "blue"},
-    "Green Dark": {"mode": "dark", "theme": "green"},
-    "Light": {"mode": "light", "theme": "blue"}
-}
+def load_available_themes():
+    """Load all theme JSON files from the themes directory"""
+    themes_dir = os.path.join(BASE_PATH, "themes")
+    themes = {
+        "Dark": {"mode": "dark", "theme": "dark-blue"},
+        "Blue Dark": {"mode": "dark", "theme": "blue"},
+        "Green Dark": {"mode": "dark", "theme": "green"},
+        "Light": {"mode": "light", "theme": "blue"}
+    }
+    
+    try:
+        if os.path.exists(themes_dir):
+            for filename in os.listdir(themes_dir):
+                if filename.endswith('.json'):
+                    theme_name = os.path.splitext(filename)[0]
+                    theme_path = os.path.join(themes_dir, filename)
+                    
+                    # Skip if it's already in our default themes
+                    if theme_name in ["dark-blue", "blue", "green"]:
+                        continue
+                        
+                    try:
+                        # Validate it's a proper theme file by checking for CTk key
+                        with open(theme_path, 'r') as f:
+                            theme_data = json.load(f)
+                            if 'CTk' in theme_data:
+                                # Add custom theme with dark mode as default
+                                themes[theme_name] = {"mode": "dark", "theme": theme_path}
+                    except (json.JSONDecodeError, KeyError):
+                        # Skip invalid theme files
+                        continue
+                        
+    except Exception as e:
+        error(f"Error loading themes: {e}")
+    
+    return themes
+
+# Available themes for the UI
+THEMES = load_available_themes()
 
 # Game status columns layout
 STATUS_COLUMNS = [
@@ -198,9 +408,13 @@ TEAM_ORDER = [
     ("pierce", 3, 0), ("None", 3, 1)
 ]
 
+
 # =====================================================================
 # GLOBAL VARIABLES
 # =====================================================================
+
+
+shared_vars = SharedVars()
 
 # Global variables for data storage and state tracking
 squad_data = {}
@@ -306,12 +520,17 @@ def delayed_slow_sync():
 # Functions for status selection management
 @safe_execute
 def load_initial_selections():
-    """Load previously selected checkboxes"""
+    """Load previously selected checkboxes from JSON file"""
     try:
         with open(STATUS_SELECTION_PATH, "r") as f:
-            return {line.strip() for line in f if line.strip()}
+            data = json.load(f)
+            # Extract values from numbered JSON and return as set
+            return set(data.values())
     except FileNotFoundError:
         warning("Status selection file not found")
+        return set()
+    except json.JSONDecodeError:
+        warning("Status selection file is corrupted")
         return set()
 
 # Process state checking functions
@@ -353,44 +572,61 @@ original_title = root.title()  # Store original title for later restoration
 
 # Configuration management functions
 def load_gui_config():
-    """Load GUI configuration from file with improved error handling and optimized validation"""
-    config = configparser.ConfigParser()
+    """Load GUI configuration from file"""
+    try:
+        config_data = {}
+        if os.path.exists(GUI_CONFIG_PATH):
+            with open(GUI_CONFIG_PATH, 'r') as f:
+                config_data = json.load(f)
+    except Exception as e:
+        error(f"Error loading GUI config: {e}")
+        config_data = {}
     
     # Default values - only what's actually needed
     defaults = {
         'theme': 'Dark',
-        'mirror_runs': '1',
-        'exp_runs': '1',
-        'exp_stage': '1',
-        'threads_runs': '1',
-        'threads_difficulty': '20',
-        'window_width': '433',
-        'window_height': '344',
-        'filter_noise': 'True',
+        'mirror_runs': 1,
+        'exp_runs': 1,
+        'exp_stage': 1,
+        'threads_runs': 1,
+        'threads_difficulty': 20,
+        'window_width': 433,
+        'window_height': 344,
+        'clean_logs': True,
         'github_owner': 'Kryxzort',
         'github_repo': 'GuiSirSquirrelAssistant',
-        'auto_update': 'False',
-        'create_backups': 'True',
-        'update_notifications': 'True',
-        'kill_processes_on_exit': 'True',
-        'chain_threads_runs': '3',  # Default chain values
-        'chain_exp_runs': '2',      # Default chain values
-        'chain_mirror_runs': '1'    # Default chain values
+        'auto_update': False,
+        'create_backups': True,
+        'update_notifications': True,
+        'kill_processes_on_exit': True,
+        'chain_threads_runs': 3,
+        'chain_exp_runs': 2,    
+        'chain_mirror_runs': 1,
+        'x_offset': 0,
+        'skip_restshop': False,
+        'skip_ego_check': False,
+        'y_offset': 0,
+        'game_monitor': 1,
+        'debug_image_matches': False,
+        'hard_mode': False,
+        'convert_images_to_grayscale': True,
+        'reconnection_delay': 6,
+        'reconnect_when_internet_reachable': True
     }
     
     # Default log filter values
     log_filter_defaults = {
-        'debug': 'False',
-        'info': 'False',
-        'warning': 'True',
-        'error': 'True',
-        'critical': 'True'
+        'debug': False,
+        'info': False,
+        'warning': True,
+        'error': True,
+        'critical': True
     }
     
     # Default module filter values
     module_filter_defaults = {}
     for module in LOG_MODULES:
-        module_filter_defaults[module.lower().replace(' ', '_')] = 'True'
+        module_filter_defaults[module.lower().replace(' ', '_')] = True
     
     # Default keyboard shortcut values
     shortcut_defaults = {
@@ -403,101 +639,112 @@ def load_gui_config():
         'chain_automation': 'ctrl+b'
     }
     
-    # Load config file if it exists
+    # Ensure config structure exists
     config_needs_save = False
     
-    if os.path.exists(GUI_CONFIG_PATH):
-        try:
-            config.read(GUI_CONFIG_PATH)
-        except Exception as e:
-            error(f"Error loading GUI config: {e}")
-            config_needs_save = True
-    else:
+    if 'Settings' not in config_data:
+        config_data['Settings'] = {}
         config_needs_save = True
     
-    # OPTIMIZED: Only add missing sections/keys instead of validating everything
-    if 'Settings' not in config:
-        config['Settings'] = {}
+    if 'LogFilters' not in config_data:
+        config_data['LogFilters'] = {}
+        config_needs_save = True
+        
+    if 'ModuleFilters' not in config_data:
+        config_data['ModuleFilters'] = {}
+        config_needs_save = True
+        
+    if 'Shortcuts' not in config_data:
+        config_data['Shortcuts'] = {}
         config_needs_save = True
     
     # Only add missing defaults
     for key, value in defaults.items():
-        if key not in config['Settings']:
-            config['Settings'][key] = value
+        if key not in config_data['Settings']:
+            config_data['Settings'][key] = value
             config_needs_save = True
     
     # Same optimization for other sections
-    if 'LogFilters' not in config:
-        config['LogFilters'] = log_filter_defaults
+    if len(config_data['LogFilters']) == 0:
+        config_data['LogFilters'] = log_filter_defaults
         config_needs_save = True
     else:
         for key, value in log_filter_defaults.items():
-            if key not in config['LogFilters']:
-                config['LogFilters'][key] = value
+            if key not in config_data['LogFilters']:
+                config_data['LogFilters'][key] = value
                 config_needs_save = True
     
-    if 'ModuleFilters' not in config:
-        config['ModuleFilters'] = module_filter_defaults
+    if len(config_data['ModuleFilters']) == 0:
+        config_data['ModuleFilters'] = module_filter_defaults
         config_needs_save = True
     else:
         for key, value in module_filter_defaults.items():
-            if key not in config['ModuleFilters']:
-                config['ModuleFilters'][key] = value
+            if key not in config_data['ModuleFilters']:
+                config_data['ModuleFilters'][key] = value
                 config_needs_save = True
     
-    if 'Shortcuts' not in config:
-        config['Shortcuts'] = shortcut_defaults
+    if len(config_data['Shortcuts']) == 0:
+        config_data['Shortcuts'] = shortcut_defaults
         config_needs_save = True
     else:
         for key, value in shortcut_defaults.items():
-            if key not in config['Shortcuts']:
-                config['Shortcuts'][key] = value
+            if key not in config_data['Shortcuts']:
+                config_data['Shortcuts'][key] = value
                 config_needs_save = True
     
     # Make sure saved theme is valid
-    if config['Settings']['theme'] not in THEMES:
-        config['Settings']['theme'] = 'Dark'
+    if config_data['Settings']['theme'] not in THEMES:
+        config_data['Settings']['theme'] = 'Dark'
         config_needs_save = True
     
-    # OPTIMIZED: Only save if something actually changed
     if config_needs_save:
-        save_gui_config(config)
+        save_gui_config(config_data)
     
-    return config
+    return config_data
 
 def save_gui_config(config=None):
     """Save GUI configuration to file with error handling"""
     if config is None:
         # Create config from current state
-        config = configparser.ConfigParser()
-        
-        # Make sure all sections exist
-        config['Settings'] = {}
-        config['LogFilters'] = {}
-        config['ModuleFilters'] = {}
-        config['Shortcuts'] = {}
+        config = {
+            'Settings': {},
+            'LogFilters': {},
+            'ModuleFilters': {},
+            'Shortcuts': {}
+        }
             
         # Add settings safely
         try:
             config['Settings'] = {
                 'theme': theme_var.get() if 'theme_var' in globals() else 'Dark',
-                'mirror_runs': entry.get() if 'entry' in globals() else '1',
-                'exp_runs': exp_entry.get() if 'exp_entry' in globals() else '1',
-                'exp_stage': exp_stage_var.get() if 'exp_stage_var' in globals() else '1',
-                'threads_runs': threads_entry.get() if 'threads_entry' in globals() else '1',
-                'threads_difficulty': threads_difficulty_var.get() if 'threads_difficulty_var' in globals() else '20',
-                'window_width': str(root.winfo_width()) if 'root' in globals() else '433',
-                'window_height': str(root.winfo_height()) if 'root' in globals() else '344',
-                'filter_noise': str(filtered_messages_enabled) if 'filtered_messages_enabled' in globals() else 'True',
+                'mirror_runs': int(entry.get()) if 'entry' in globals() and entry.get().isdigit() else 1,
+                'exp_runs': int(exp_entry.get()) if 'exp_entry' in globals() and exp_entry.get().isdigit() else 1,
+                'exp_stage': exp_stage_var.get() if 'exp_stage_var' in globals() and exp_stage_var.get() == "latest" else (int(exp_stage_var.get()) if 'exp_stage_var' in globals() else 1),
+                'threads_runs': int(threads_entry.get()) if 'threads_entry' in globals() and threads_entry.get().isdigit() else 1,
+                'threads_difficulty': threads_difficulty_var.get() if 'threads_difficulty_var' in globals() else 20,
+                'window_width': root.winfo_width() if 'root' in globals() else 433,
+                'window_height': root.winfo_height() if 'root' in globals() else 344,
+                'clean_logs': bool(filtered_messages_enabled) if 'filtered_messages_enabled' in globals() else True,
                 'github_owner': 'Kryxzort',
                 'github_repo': 'GuiSirSquirrelAssistant',
-                'auto_update': str(auto_update_var.get()) if 'auto_update_var' in globals() else 'False',
-                'create_backups': str(create_backups_var.get()) if 'create_backups_var' in globals() else 'True',
-                'update_notifications': str(update_notifications_var.get()) if 'update_notifications_var' in globals() else 'True',
-                'kill_processes_on_exit': str(kill_processes_var.get()) if 'kill_processes_var' in globals() else 'False',
-                'chain_threads_runs': chain_threads_entry.get() if 'chain_threads_entry' in globals() else '3',
-                'chain_exp_runs': chain_exp_entry.get() if 'chain_exp_entry' in globals() else '2',
-                'chain_mirror_runs': chain_mirror_entry.get() if 'chain_mirror_entry' in globals() else '1'
+                'auto_update': bool(auto_update_var.get()) if 'auto_update_var' in globals() else False,
+                'create_backups': bool(create_backups_var.get()) if 'create_backups_var' in globals() else True,
+                'update_notifications': bool(update_notifications_var.get()) if 'update_notifications_var' in globals() else True,
+                'kill_processes_on_exit': bool(kill_processes_var.get()) if 'kill_processes_var' in globals() else False,
+                'chain_threads_runs': int(chain_threads_entry.get()) if 'chain_threads_entry' in globals() and chain_threads_entry.get().isdigit() else 3,
+                'chain_exp_runs': int(chain_exp_entry.get()) if 'chain_exp_entry' in globals() and chain_exp_entry.get().isdigit() else 2,
+                'chain_mirror_runs': int(chain_mirror_entry.get()) if 'chain_mirror_entry' in globals() and chain_mirror_entry.get().isdigit() else 1,
+                'x_offset': int(shared_vars.x_offset.value) if 'shared_vars' in globals() else 0,
+                'y_offset': int(shared_vars.y_offset.value) if 'shared_vars' in globals() else 0,
+                'skip_restshop': bool(shared_vars.skip_restshop.value) if 'shared_vars' in globals() else False,
+                'skip_ego_check': bool(shared_vars.skip_ego_check.value) if 'shared_vars' in globals() else False,
+                'prioritize_list_over_status': bool(shared_vars.prioritize_list_over_status.value) if 'shared_vars' in globals() else False,
+                'game_monitor': int(shared_vars.GAME_MONITOR_INDEX.value) if 'shared_vars' in globals() else 1,
+                'debug_image_matches': bool(shared_vars.debug_image_matches.value) if 'shared_vars' in globals() else False,
+                'hard_mode': bool(shared_vars.hard_mode.value) if 'shared_vars' in globals() else False,
+                'convert_images_to_grayscale': bool(shared_vars.convert_images_to_grayscale.value) if 'shared_vars' in globals() else True,
+                'reconnection_delay': int(shared_vars.reconnection_delay.value) if 'shared_vars' in globals() else 6,
+                'reconnect_when_internet_reachable': bool(shared_vars.reconnect_when_internet_reachable.value) if 'shared_vars' in globals() else False,
             }
         except Exception as e:
             error(f"Error setting up Settings section: {e}")
@@ -506,11 +753,11 @@ def save_gui_config(config=None):
         try:
             if 'log_filters' in globals():
                 config['LogFilters'] = {
-                    'debug': str(log_filters['DEBUG'].get()),
-                    'info': str(log_filters['INFO'].get()),
-                    'warning': str(log_filters['WARNING'].get()),
-                    'error': str(log_filters['ERROR'].get()),
-                    'critical': str(log_filters['CRITICAL'].get())
+                    'debug': bool(log_filters['DEBUG'].get()),
+                    'info': bool(log_filters['INFO'].get()),
+                    'warning': bool(log_filters['WARNING'].get()),
+                    'error': bool(log_filters['ERROR'].get()),
+                    'critical': bool(log_filters['CRITICAL'].get())
                 }
         except Exception as e:
             error(f"Error setting up LogFilters section: {e}")
@@ -519,7 +766,7 @@ def save_gui_config(config=None):
         try:
             if 'module_filters' in globals() and 'LOG_MODULES' in globals():
                 for module in LOG_MODULES:
-                    config['ModuleFilters'][module.lower().replace(' ', '_')] = str(module_filters[module].get())
+                    config['ModuleFilters'][module.lower().replace(' ', '_')] = bool(module_filters[module].get())
         except Exception as e:
             error(f"Error setting up ModuleFilters section: {e}")
         
@@ -543,28 +790,127 @@ def save_gui_config(config=None):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         
         with open(GUI_CONFIG_PATH, 'w') as f:
-            config.write(f)
+            json.dump(config, f, indent=2)
     except Exception as e:
         error(f"Error saving GUI config: {e}")
 
-# Load configuration before creating UI elements
+# =====================================================================
+# MONITOR CONFIGURATION FUNCTIONS
+# =====================================================================
+
+def get_available_monitors():
+    try:
+        monitors = common.list_available_monitors()
+        monitor_options = []
+        for i, monitor in enumerate(monitors, 1):
+            resolution = f"{monitor['width']}x{monitor['height']}"
+            monitor_options.append({
+                'index': i,
+                'text': f"Monitor {i} ({resolution})",
+                'resolution': resolution,
+                'monitor_data': monitor
+            })
+        return monitor_options
+    except Exception as e:
+        error(f"Error getting available monitors: {e}")
+        return [{'index': 1, 'text': "Monitor 1 (Unknown)", 'resolution': "Unknown", 'monitor_data': {}}]
+
+def load_monitor_config():
+    try:
+        config_path = os.path.join(CONFIG_DIR, "gui_config.json")
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get('Settings', {}).get('game_monitor', 1)
+        return 1  # Default to monitor 1
+    except Exception as e:
+        error(f"Error loading monitor config: {e}")
+        return 1
+
+def save_monitor_config(monitor_index):
+    try:
+        config_path = os.path.join(CONFIG_DIR, "gui_config.json")
+        config = {}
+        
+        # Read existing config
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        
+        # Ensure Settings section exists
+        if 'Settings' not in config:
+            config['Settings'] = {}
+        
+        # Update monitor setting
+        config['Settings']['game_monitor'] = monitor_index
+        
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        info(f"Monitor config saved: Monitor {monitor_index}")
+    except Exception as e:
+        error(f"Error saving monitor config: {e}")
+
+def update_monitor_selection(choice, shared_vars):
+    try:
+        monitor_index = int(choice.split()[1])
+        
+        shared_vars.GAME_MONITOR_INDEX.value = monitor_index
+        common.set_game_monitor(monitor_index)
+        save_monitor_config(monitor_index)
+        
+        info(f"Monitor selection updated to Monitor {monitor_index}")
+        
+    except Exception as e:
+        error(f"Error updating monitor selection: {e}")
+
 config = load_gui_config()
-filtered_messages_enabled = config['Settings'].getboolean('filter_noise', True)
+filtered_messages_enabled = config['Settings'].get('clean_logs', True)
+
+import common # type: ignore
+common.CLEAN_LOGS_ENABLED = filtered_messages_enabled
+
+try:
+    shared_vars.x_offset.value = config['Settings'].get('x_offset', 0)
+    shared_vars.y_offset.value = config['Settings'].get('y_offset', 0)
+    
+    monitor_index = load_monitor_config()
+    shared_vars.GAME_MONITOR_INDEX.value = monitor_index
+    common.set_game_monitor(monitor_index)
+    info(f"Monitor initialized to Monitor {monitor_index}")
+    
+except Exception as e:
+    error(f"Error loading offset values: {e}")
+    shared_vars.x_offset.value = 0
+    shared_vars.y_offset.value = 0
+    shared_vars.GAME_MONITOR_INDEX.value = 1
+    common.set_game_monitor(1)
+
+    try:
+        shared_vars.skip_restshop.value = config['Settings'].get('skip_restshop', False)
+        shared_vars.skip_ego_check.value = config['Settings'].get('skip_ego_check', False)
+        shared_vars.prioritize_list_over_status.value = config['Settings'].get('prioritize_list_over_status', False)
+        shared_vars.debug_image_matches.value = config['Settings'].get('debug_image_matches', False)
+        shared_vars.hard_mode.value = config['Settings'].get('hard_mode', False)
+        shared_vars.convert_images_to_grayscale.value = config['Settings'].get('convert_images_to_grayscale', True)
+        shared_vars.reconnection_delay.value = config['Settings'].get('reconnection_delay', 6)
+    except Exception as e:
+        error(f"Error loading automation settings: {e}")
 
 # Create log filter UI variables from config
 log_filters = {
-    "DEBUG": ctk.BooleanVar(value=config['LogFilters'].getboolean('debug', False)),
-    "INFO": ctk.BooleanVar(value=config['LogFilters'].getboolean('info', False)),
-    "WARNING": ctk.BooleanVar(value=config['LogFilters'].getboolean('warning', True)),
-    "ERROR": ctk.BooleanVar(value=config['LogFilters'].getboolean('error', True)),
-    "CRITICAL": ctk.BooleanVar(value=config['LogFilters'].getboolean('critical', True))
+    "DEBUG": ctk.BooleanVar(value=config['LogFilters'].get('debug', False)),
+    "INFO": ctk.BooleanVar(value=config['LogFilters'].get('info', False)),
+    "WARNING": ctk.BooleanVar(value=config['LogFilters'].get('warning', True)),
+    "ERROR": ctk.BooleanVar(value=config['LogFilters'].get('error', True)),
+    "CRITICAL": ctk.BooleanVar(value=config['LogFilters'].get('critical', True))
 }
 
 # Create module filter UI variables from config
 module_filters = {}
 for module in LOG_MODULES:
     key = module.lower().replace(' ', '_')
-    module_filters[module] = ctk.BooleanVar(value=config['ModuleFilters'].getboolean(key, True))
+    module_filters[module] = ctk.BooleanVar(value=config['ModuleFilters'].get(key, True))
 
 # Create keyboard shortcut variables from config
 shortcut_vars = {
@@ -578,10 +924,10 @@ shortcut_vars = {
 }
 
 # MOVED: Update-related variables (MUST be global for auto-update to work without Settings tab)
-auto_update_var = ctk.BooleanVar(value=config['Settings'].getboolean('auto_update', False))
-create_backups_var = ctk.BooleanVar(value=config['Settings'].getboolean('create_backups', True))
-update_notifications_var = ctk.BooleanVar(value=config['Settings'].getboolean('update_notifications', True))
-kill_processes_var = ctk.BooleanVar(value=config['Settings'].getboolean('kill_processes_on_exit', False))
+auto_update_var = ctk.BooleanVar(value=config['Settings'].get('auto_update', False))
+create_backups_var = ctk.BooleanVar(value=config['Settings'].get('create_backups', True))
+update_notifications_var = ctk.BooleanVar(value=config['Settings'].get('update_notifications', True))
+kill_processes_var = ctk.BooleanVar(value=config['Settings'].get('kill_processes_on_exit', False))
 
 # MOVED: Global update callback functions (MUST be global for auto-update to work)
 def check_updates_callback(success, message, update_available):
@@ -628,11 +974,10 @@ def perform_update():
         callback=update_finished_callback
     )
 
-# =====================================================================
-# OPTIMIZED LOGGING DISPLAY HANDLER
-# =====================================================================
+# ==========================
+# LOGGING DISPLAY HANDLER
+# ==========================
 
-# Simplified and optimized logging handler
 class OptimizedLogHandler(logging.Handler):
     """Optimized log handler that combines file monitoring and text display"""
     
@@ -678,7 +1023,7 @@ class OptimizedLogHandler(logging.Handler):
             except Exception as e:
                 # Avoid crashing the thread on any error
                 try:
-                    print(f"Error in log update thread: {e}")
+                    error(f"Error in log update thread: {e}")
                 except:
                     pass
     
@@ -706,7 +1051,7 @@ class OptimizedLogHandler(logging.Handler):
     
     def _should_show_message(self, message):
         """Check if the message should be shown or filtered out as noise"""
-        if not filtered_messages_enabled:
+        if not common.CLEAN_LOGS_ENABLED:
             return True
             
         # Check if the message contains any filtered message
@@ -749,7 +1094,7 @@ class OptimizedLogHandler(logging.Handler):
 # Status selection management functions
 @safe_execute
 def save_selected_statuses():
-    """Save selected checkboxes to file with most recent at the bottom"""
+    """Save selected checkboxes to JSON file with numbered priorities"""
     # Safety check - this shouldn't happen anymore but just in case
     if not checkbox_vars:
         warning("Attempted to save statuses before checkbox data was loaded")
@@ -757,11 +1102,13 @@ def save_selected_statuses():
     
     selected = [name for name, var in checkbox_vars.items() if var.get()]
     
-    # Try to read existing selections to determine order
+    # Try to read existing numbered selections
     try:
         with open(STATUS_SELECTION_PATH, "r") as f:
-            existing_selections = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
+            existing_data = json.load(f)
+            # Convert numbered dict back to ordered list
+            existing_selections = [existing_data[str(i)] for i in sorted([int(k) for k in existing_data.keys()])]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
         existing_selections = []
     
     # Remove any selections that are no longer selected
@@ -777,9 +1124,12 @@ def save_selected_statuses():
             # New selection, add at the end
             existing_selections.append(s)
     
-    # Save the updated selections
+    # Convert to numbered dictionary (1-based indexing)
+    numbered_data = {str(i + 1): status for i, status in enumerate(existing_selections)}
+    
+    # Save as JSON
     with open(STATUS_SELECTION_PATH, "w") as f:
-        f.write("\n".join(existing_selections))
+        json.dump(numbered_data, f, indent=4)
     
     info(f"Saved selected statuses: {existing_selections}")
 
@@ -839,10 +1189,9 @@ def dropdown_callback(status, index, *_):
     except Exception as e:
         error(f"Error in dropdown callback: {e}")
 
-# =====================================================================
-# OPTIMIZED PROCESS MANAGEMENT FUNCTIONS
-# =====================================================================
-
+# ===============================
+#  PROCESS MANAGEMENT FUNCTIONS
+# ===============================
 # Unified process termination function
 def terminate_process(proc, name):
     """Unified process termination with error handling"""
@@ -896,7 +1245,7 @@ def kill_function_runner():
     if 'function_terminate_button' in globals():
         function_terminate_button.configure(state="disabled")
 
-# Unified process start function with shared validation
+# MODIFIED: Updated process start function to pass shared memory
 def start_automation_process(process_type, command_args, button_ref, process_ref_name):
     """Unified function to start automation processes"""
     global process, exp_process, threads_process
@@ -916,13 +1265,26 @@ def start_automation_process(process_type, command_args, button_ref, process_ref
             kill_threads_bot()
         return
     
-    # Create environment variables with correct paths
-    env = os.environ.copy()
-    env['PYTHONPATH'] = BASE_PATH + os.pathsep + os.path.join(BASE_PATH, 'src')
-    
-    # Launch process with appropriate command
+    # MODIFIED: Start subprocess using multiprocessing.Process instead of subprocess.Popen
     try:
-        new_process = subprocess.Popen(command_args, env=env)
+        if process_type == "Mirror Dungeon":
+            from src import compiled_runner
+            count = int(entry.get())
+            new_process = Process(target=compiled_runner.main, args=(count, shared_vars))
+        elif process_type == "Exp":
+            from src import exp_runner
+            runs = int(exp_entry.get())
+            stage = exp_stage_var.get()
+            if stage != "latest":
+                stage = int(stage)
+            new_process = Process(target=exp_runner.main, args=(runs, stage, shared_vars))
+        elif process_type == "Threads":
+            from src import threads_runner
+            runs = int(threads_entry.get())
+            difficulty = threads_difficulty_var.get()
+            new_process = Process(target=threads_runner.main, args=(runs, difficulty, shared_vars))
+        
+        new_process.start()
         
         # Update global process reference
         globals()[process_ref_name] = new_process
@@ -949,13 +1311,8 @@ def start_run():
         
     save_selected_statuses()
     
-    # Determine command based on execution mode
-    if getattr(sys, 'frozen', False):
-        command_args = [PYTHON_CMD, "-m", "src.compiled_runner", str(count)]
-    else:
-        command_args = [sys.executable, MIRROR_SCRIPT_PATH, str(count)]
-    
-    start_automation_process("Mirror Dungeon", command_args, start_button, "process")
+    # Using multiprocessing instead of subprocess
+    start_automation_process("Mirror Dungeon", [], start_button, "process")
 
 def start_exp_run():
     """Start Exp automation"""
@@ -982,41 +1339,36 @@ def start_exp_run():
         warning("Invalid numeric input for Exp automation")
         return
 
-    # Determine command based on execution mode
-    if getattr(sys, 'frozen', False):
-        command_args = [PYTHON_CMD, "-m", "src.exp_runner", str(runs), stage_value]  # Pass stage_value directly
-    else:
-        command_args = [sys.executable, EXP_SCRIPT_PATH, str(runs), stage_value]  # Pass stage_value directly
-    
-    start_automation_process("Exp", command_args, exp_start_button, "exp_process")
+    # Using multiprocessing instead of subprocess
+    start_automation_process("Exp", [], exp_start_button, "exp_process")
 
 def start_threads_run():
     """Start Threads automation"""
     try:
         runs = int(threads_entry.get())
-        difficulty = int(threads_difficulty_var.get())
-        if runs < 1 or difficulty not in [20, 30, 40, 50]:
-            messagebox.showerror("Invalid Input", "Enter a valid number of runs and difficulty (20, 30, 40, or 50).")
-            warning(f"Invalid input: runs={runs}, difficulty={difficulty}")
+        difficulty_value = threads_difficulty_var.get()
+        
+        # Handle numeric difficulties with validation
+        if difficulty_value != "latest":
+            difficulty = int(difficulty_value)
+            if runs < 1 or difficulty not in [20, 30, 40, 50]:
+                messagebox.showerror("Invalid Input", "Enter a valid number of runs and difficulty (20, 30, 40, 50 or 'latest').")
+                warning(f"Invalid input: runs={runs}, difficulty={difficulty_value}")
+                return
+        
+        # Just validate runs for any difficulty value
+        if runs < 1:
+            messagebox.showerror("Invalid Input", "Enter a valid number of runs.")
+            warning(f"Invalid input: runs={runs}")
             return
+            
     except ValueError:
         messagebox.showerror("Invalid Input", "Enter valid numbers.")
         warning("Invalid numeric input for Threads automation")
         return
     
-    # Ensure the threads script path is correct
-    if not os.path.exists(THREADS_SCRIPT_PATH):
-        error(f"Threads runner script not found at: {THREADS_SCRIPT_PATH}")
-        messagebox.showerror("Error", f"Could not find threads_runner.py in src directory. Please ensure it exists.")
-        return
-    
-    # Determine command based on execution mode
-    if getattr(sys, 'frozen', False):
-        command_args = [PYTHON_CMD, "-m", "src.threads_runner", str(runs), str(difficulty)]
-    else:
-        command_args = [sys.executable, THREADS_SCRIPT_PATH, str(runs), str(difficulty)]
-    
-    start_automation_process("Threads", command_args, threads_start_button, "threads_process")
+    # Using multiprocessing instead of subprocess
+    start_automation_process("Threads", [], threads_start_button, "threads_process")
 
 # =====================================================================
 # CHAIN AUTOMATION FUNCTIONS
@@ -1104,41 +1456,29 @@ def run_next_chain_step():
     if automation_type == "Mirror":
         save_selected_statuses()
     
-    # Start the appropriate automation
+    # MODIFIED: Start the appropriate automation using multiprocessing
     try:
-        env = os.environ.copy()
-        env['PYTHONPATH'] = BASE_PATH + os.pathsep + os.path.join(BASE_PATH, 'src')
-        
         if automation_type == "Threads":
-            difficulty = int(threads_difficulty_var.get())
-            if getattr(sys, 'frozen', False):
-                command_args = [PYTHON_CMD, "-m", "src.threads_runner", str(runs), str(difficulty)]
-            else:
-                command_args = [sys.executable, THREADS_SCRIPT_PATH, str(runs), str(difficulty)]
-            
+            from src import threads_runner
+            difficulty = threads_difficulty_var.get()
             global threads_process
-            threads_process = subprocess.Popen(command_args, env=env)
+            threads_process = Process(target=threads_runner.main, args=(runs, difficulty, shared_vars))
+            threads_process.start()
             info(f"Chain: Started Threads automation ({runs} runs, difficulty {difficulty})")
             
         elif automation_type == "Exp":
-            stage = int(exp_stage_var.get())
-            if getattr(sys, 'frozen', False):
-                command_args = [PYTHON_CMD, "-m", "src.exp_runner", str(runs), str(stage)]
-            else:
-                command_args = [sys.executable, EXP_SCRIPT_PATH, str(runs), str(stage)]
-            
+            from src import exp_runner
+            stage = exp_stage_var.get()
             global exp_process
-            exp_process = subprocess.Popen(command_args, env=env)
+            exp_process = Process(target=exp_runner.main, args=(runs, stage, shared_vars))
+            exp_process.start()
             info(f"Chain: Started Exp automation ({runs} runs, stage {stage})")
             
         elif automation_type == "Mirror":
-            if getattr(sys, 'frozen', False):
-                command_args = [PYTHON_CMD, "-m", "src.compiled_runner", str(runs)]
-            else:
-                command_args = [sys.executable, MIRROR_SCRIPT_PATH, str(runs)]
-            
+            from src import compiled_runner
             global process
-            process = subprocess.Popen(command_args, env=env)
+            process = Process(target=compiled_runner.main, args=(runs, shared_vars))
+            process.start()
             info(f"Chain: Started Mirror automation ({runs} runs)")
         
         # Move to next step
@@ -1171,21 +1511,21 @@ def monitor_chain_step():
     
     if automation_type == "Threads":
         current_process = threads_process
-        if threads_process is None or threads_process.poll() is not None:
+        if threads_process is None or not threads_process.is_alive():
             process_finished = True
-            if threads_process and threads_process.poll() is not None:
+            if threads_process and not threads_process.is_alive():
                 threads_process = None  # Clean up
     elif automation_type == "Exp":
         current_process = exp_process
-        if exp_process is None or exp_process.poll() is not None:
+        if exp_process is None or not exp_process.is_alive():
             process_finished = True
-            if exp_process and exp_process.poll() is not None:
+            if exp_process and not exp_process.is_alive():
                 exp_process = None  # Clean up
     elif automation_type == "Mirror":
         current_process = process
-        if process is None or process.poll() is not None:
+        if process is None or not process.is_alive():
             process_finished = True
-            if process and process.poll() is not None:
+            if process and not process.is_alive():
                 process = None  # Clean up
     
     if process_finished:
@@ -1384,8 +1724,8 @@ ctk.set_appearance_mode(THEMES[theme_var.get()]["mode"])
 ctk.set_default_color_theme(THEMES[theme_var.get()]["theme"])
 
 # Set window size from config
-window_width = config['Settings'].getint('window_width', 433)
-window_height = config['Settings'].getint('window_height', 344)
+window_width = config['Settings'].get('window_width', 433)
+window_height = config['Settings'].get('window_height', 344)
 root.geometry(f"{window_width}x{window_height}")
 
 # Performance improvement: Disable complex logging at startup
@@ -1428,24 +1768,66 @@ tabs.configure(command=on_tab_changed)
 scroll = ctk.CTkScrollableFrame(master=tab_md)
 scroll.pack(fill="both", expand=True)
 
-ctk.CTkLabel(scroll, text="Number of Runs:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+ctk.CTkLabel(scroll, text="Number of Runs:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 entry = ctk.CTkEntry(scroll)
 entry.pack(pady=(0, 5))
 entry.insert(0, config['Settings'].get('mirror_runs', '1'))  # Set from config
 
+def update_mirror_runs():
+    try:
+        new_value = int(entry.get())
+        if new_value < 1:
+            raise ValueError("Must be at least 1 run")
+        save_gui_config()
+        info(f"Updated mirror runs to: {new_value}")
+    except ValueError as e:
+        messagebox.showerror("Invalid Input", f"Number of runs must be a valid number (minimum 1): {e}")
+        entry.delete(0, 'end')
+        entry.insert(0, config['Settings'].get('mirror_runs', '1'))
+
+entry.bind('<Return>', lambda e: update_mirror_runs())
+
 start_button = ctk.CTkButton(scroll, text="Start", command=toggle_button)
 start_button.pack(pady=(0, 15))
+
+# Hard Mode toggle
+hard_mode_var = ctk.BooleanVar(value=shared_vars.hard_mode.value)
+def update_hard_mode():
+    shared_vars.hard_mode.value = hard_mode_var.get()
+    save_gui_config()
+hard_mode_checkbox = ctk.CTkCheckBox(
+    scroll, 
+    text="Hard Mode", 
+    variable=hard_mode_var,
+    command=update_hard_mode
+)
+hard_mode_checkbox.pack(pady=(0, 15))
 
 # Setting up the Exp tab
 exp_scroll = ctk.CTkScrollableFrame(master=tab_exp)
 exp_scroll.pack(fill="both", expand=True)
 
-ctk.CTkLabel(exp_scroll, text="Number of Runs:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+ctk.CTkLabel(exp_scroll, text="Number of Runs:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 exp_entry = ctk.CTkEntry(exp_scroll)
 exp_entry.pack(pady=(0, 5))
 exp_entry.insert(0, config['Settings'].get('exp_runs', '1'))  # Set from config
 
-ctk.CTkLabel(exp_scroll, text="Choose Stage:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+def update_exp_runs():
+    """Update exp runs from entry field"""
+    try:
+        new_value = int(exp_entry.get())
+        if new_value < 1:
+            raise ValueError("Must be at least 1 run")
+        save_gui_config()
+        info(f"Updated exp runs to: {new_value}")
+    except ValueError as e:
+        messagebox.showerror("Invalid Input", f"Number of runs must be a valid number (minimum 1): {e}")
+        exp_entry.delete(0, 'end')
+        exp_entry.insert(0, config['Settings'].get('exp_runs', '1'))
+
+exp_entry.bind('<Return>', lambda e: update_exp_runs())
+
+ctk.CTkLabel(exp_scroll, text="Choose Stage:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 exp_stage_var = ctk.StringVar(value=config['Settings'].get('exp_stage', '1'))  # Set from config
 exp_stage_dropdown = ctk.CTkOptionMenu(
     master=exp_scroll,
@@ -1463,17 +1845,32 @@ exp_start_button.pack(pady=(0, 15))
 threads_scroll = ctk.CTkScrollableFrame(master=tab_threads)
 threads_scroll.pack(fill="both", expand=True)
 
-ctk.CTkLabel(threads_scroll, text="Number of Runs:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+ctk.CTkLabel(threads_scroll, text="Number of Runs:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 threads_entry = ctk.CTkEntry(threads_scroll)
 threads_entry.pack(pady=(0, 5))
 threads_entry.insert(0, config['Settings'].get('threads_runs', '1'))  # Set from config
 
-ctk.CTkLabel(threads_scroll, text="Choose Difficulty:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+def update_threads_runs():
+    """Update threads runs from entry field"""
+    try:
+        new_value = int(threads_entry.get())
+        if new_value < 1:
+            raise ValueError("Must be at least 1 run")
+        save_gui_config()
+        info(f"Updated threads runs to: {new_value}")
+    except ValueError as e:
+        messagebox.showerror("Invalid Input", f"Number of runs must be a valid number (minimum 1): {e}")
+        threads_entry.delete(0, 'end')
+        threads_entry.insert(0, config['Settings'].get('threads_runs', '1'))
+
+threads_entry.bind('<Return>', lambda e: update_threads_runs())
+
+ctk.CTkLabel(threads_scroll, text="Choose Difficulty:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 threads_difficulty_var = ctk.StringVar(value=config['Settings'].get('threads_difficulty', '20'))  # Set from config
 threads_difficulty_dropdown = ctk.CTkOptionMenu(
     master=threads_scroll,
     variable=threads_difficulty_var,
-    values=["20", "30", "40", "50"],
+    values=["20", "30", "40", "50", "latest"],
     width=200,
     font=ctk.CTkFont(size=16)
 )
@@ -1491,7 +1888,7 @@ others_scroll = ctk.CTkScrollableFrame(master=tab_others)
 others_scroll.pack(fill="both", expand=True)
 
 # Chain Functions section
-ctk.CTkLabel(others_scroll, text="Chain Functions", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+ctk.CTkLabel(others_scroll, text="Chain Functions", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 
 chain_help = ctk.CTkLabel(
     others_scroll, 
@@ -1503,7 +1900,7 @@ chain_help.pack(pady=(0, 10))
 
 # Chain input frame
 chain_frame = ctk.CTkFrame(others_scroll)
-chain_frame.pack(pady=(0, 10), fill="x", padx=20)
+chain_frame.pack(pady=(0, 10), padx=20)
 
 # Threads input
 threads_chain_frame = ctk.CTkFrame(chain_frame)
@@ -1513,6 +1910,21 @@ chain_threads_entry = ctk.CTkEntry(threads_chain_frame, width=80)
 chain_threads_entry.pack(side="left", padx=(0, 10))
 chain_threads_entry.insert(0, config['Settings'].get('chain_threads_runs', '3'))
 
+def update_chain_threads_runs():
+    """Update chain threads runs from entry field"""
+    try:
+        new_value = int(chain_threads_entry.get())
+        if new_value < 0:
+            raise ValueError("Must be 0 or greater")
+        save_gui_config()
+        info(f"Updated chain threads runs to: {new_value}")
+    except ValueError as e:
+        messagebox.showerror("Invalid Input", f"Chain threads runs must be a valid number (minimum 0): {e}")
+        chain_threads_entry.delete(0, 'end')
+        chain_threads_entry.insert(0, config['Settings'].get('chain_threads_runs', '3'))
+
+chain_threads_entry.bind('<Return>', lambda e: update_chain_threads_runs())
+
 # Exp input
 exp_chain_frame = ctk.CTkFrame(chain_frame)
 exp_chain_frame.pack(fill="x", pady=5)
@@ -1521,6 +1933,21 @@ chain_exp_entry = ctk.CTkEntry(exp_chain_frame, width=80)
 chain_exp_entry.pack(side="left", padx=(0, 10))
 chain_exp_entry.insert(0, config['Settings'].get('chain_exp_runs', '2'))
 
+def update_chain_exp_runs():
+    """Update chain exp runs from entry field"""
+    try:
+        new_value = int(chain_exp_entry.get())
+        if new_value < 0:
+            raise ValueError("Must be 0 or greater")
+        save_gui_config()
+        info(f"Updated chain exp runs to: {new_value}")
+    except ValueError as e:
+        messagebox.showerror("Invalid Input", f"Chain exp runs must be a valid number (minimum 0): {e}")
+        chain_exp_entry.delete(0, 'end')
+        chain_exp_entry.insert(0, config['Settings'].get('chain_exp_runs', '2'))
+
+chain_exp_entry.bind('<Return>', lambda e: update_chain_exp_runs())
+
 # Mirror input
 mirror_chain_frame = ctk.CTkFrame(chain_frame)
 mirror_chain_frame.pack(fill="x", pady=5)
@@ -1528,6 +1955,21 @@ ctk.CTkLabel(mirror_chain_frame, text="Mirror Runs:", width=100).pack(side="left
 chain_mirror_entry = ctk.CTkEntry(mirror_chain_frame, width=80)
 chain_mirror_entry.pack(side="left", padx=(0, 10))
 chain_mirror_entry.insert(0, config['Settings'].get('chain_mirror_runs', '1'))
+
+def update_chain_mirror_runs():
+    """Update chain mirror runs from entry field"""
+    try:
+        new_value = int(chain_mirror_entry.get())
+        if new_value < 0:
+            raise ValueError("Must be 0 or greater")
+        save_gui_config()
+        info(f"Updated chain mirror runs to: {new_value}")
+    except ValueError as e:
+        messagebox.showerror("Invalid Input", f"Chain mirror runs must be a valid number (minimum 0): {e}")
+        chain_mirror_entry.delete(0, 'end')
+        chain_mirror_entry.insert(0, config['Settings'].get('chain_mirror_runs', '1'))
+
+chain_mirror_entry.bind('<Return>', lambda e: update_chain_mirror_runs())
 
 # Chain control buttons
 chain_control_frame = ctk.CTkFrame(others_scroll)
@@ -1549,7 +1991,7 @@ separator1 = ctk.CTkFrame(others_scroll, height=2, width=300)
 separator1.pack(pady=10)
 
 # Function call section
-ctk.CTkLabel(others_scroll, text="Call a function:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+ctk.CTkLabel(others_scroll, text="Call a function:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 function_entry = ctk.CTkEntry(others_scroll, width=300)
 function_entry.pack(pady=(0, 5))
 
@@ -1576,7 +2018,7 @@ function_terminate_button = ctk.CTkButton(
 function_terminate_button.pack(pady=(0, 15))
 
 # =====================================================================
-# LAZY-LOADED SETTINGS TAB - UPDATED WITH UPDATES SECTION
+# LAZY-LOADED SETTINGS TAB - UPDATED WITH OFFSET CONTROLS
 # =====================================================================
 
 def load_settings_tab():
@@ -1589,10 +2031,8 @@ def load_settings_tab():
     settings_scroll = ctk.CTkScrollableFrame(master=tab_settings)
     settings_scroll.pack(fill="both", expand=True)
 
-    # Reordered settings sections: 1. Team, 2. Assign Sinners, 3. Keyboard Shortcuts, 4. Updates, 5. Theme, 6. Kill Processes Toggle
-
-    # 1. Team selection section
-    ctk.CTkLabel(settings_scroll, text="Your Team", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    # Team selection section
+    ctk.CTkLabel(settings_scroll, text="Your Team", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
     team_frame = ctk.CTkFrame(settings_scroll)
     team_frame.pack(pady=(0, 15))
 
@@ -1614,8 +2054,8 @@ def load_settings_tab():
         chk.grid(row=row, column=col, padx=5, pady=2, sticky="w")
         # Note: checkbox_vars[name] is already set, no need to set it again
 
-    # 2. Sinner assignment section
-    ctk.CTkLabel(settings_scroll, text="Assign Sinners to Name", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
+    # Sinner assignment section (leave as is)
+    ctk.CTkLabel(settings_scroll, text="Assign Sinners to Team", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
 
     container = ctk.CTkFrame(settings_scroll)
     container.pack()
@@ -1690,10 +2130,461 @@ def load_settings_tab():
                 bind_callback()
                 dropdown_vars[status].append(var)
 
-    # 3. Keyboard shortcut configuration section
-    ctk.CTkLabel(settings_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    # Pack Priority section
+    ctk.CTkLabel(settings_scroll, text="Pack Priority", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+
+    load_pack_priority()
+    global delayed_pack_priority_data
+    delayed_pack_priority_data = json.loads(json.dumps(pack_priority_data))
+    save_delayed_pack_priority(delayed_pack_priority_data)
+
+    FLOORS = [f"floor{i}" for i in range(1, 6)]
+    floor_labels = [f"Floor {i}" for i in range(1, 6)]
+    # Define columns for packs (3 columns, like STATUS_COLUMNS)
+    PACK_COLUMNS = [["floor1", "floor2"], ["floor3", "floor4"], ["floor5"]]
+    
+    # Define packs for each floor
+    FLOOR_PACKS = {
+        "floor1": ["erosion", "factory", "forgotten", "gamblers", "nagel", "nest", "outcast", "unloving"],
+        "floor2": ["cleaved", "crushed", "erosion", "factory", "gamblers", "hell", "lake", "nest", "pierced", "SEA", "unloving"],
+        "floor3": ["cleaved", "craving", "crushed", "dregs", "flood", "flowers", "indolence", "judgment", "pierced", "repression", "seduction", "subservience", "unconfronting"],
+        "floor4": ["crawling", "envy", "fullstop", "gloom", "gluttony", "lust", "miracle", "noon", "pride", "sloth", "tearful", "time", "violet", "warp", "world", "wrath", "yield"],
+        "floor5": ["crawling", "crushers", "envy", "gloom", "gluttony", "lcb_check", "lust", "nocturnal", "piercers", "pride", "slicers", "sloth", "tearful", "time", "warp", "world", "wrath", "yield"]
+    }
+
+    global pack_dropdown_vars, pack_expand_frames
+    pack_dropdown_vars = {}
+    pack_expand_frames = {}
+
+    pack_container = ctk.CTkFrame(settings_scroll)
+    pack_container.pack()
+
+    for col_idx, group in enumerate(PACK_COLUMNS):
+        col = ctk.CTkFrame(pack_container, fg_color="transparent")
+        col.grid(row=0, column=col_idx, padx=15, sticky="n")
+
+        for row_idx, floor in enumerate(group):
+            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
+            wrapper.grid(row=row_idx, column=0, sticky="nw")
+
+            idx = FLOORS.index(floor)
+            arrow_var = ctk.StringVar(value="▶")
+            full_text = ctk.StringVar(value=f"{arrow_var.get()} {floor_labels[idx]}")
+
+            def make_toggle(f=floor, arrow=arrow_var):
+                return lambda: toggle_expand(pack_expand_frames[f], arrow)
+
+            btn = ctk.CTkButton(
+                master=wrapper,
+                textvariable=full_text,
+                command=make_toggle(),
+                width=200,
+                height=38,
+                font=ctk.CTkFont(size=18),
+                anchor="w"
+            )
+            btn.pack(anchor="w", pady=(0, 6))
+
+            arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=floor_labels[idx]: textvar.set(f"{var.get()} {name}"))
+
+            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+            pack_expand_frames[floor] = frame
+            frame.pack_forget()
+
+            pack_dropdown_vars[floor] = []
+            default_order = pack_priority_data.get(floor, {})
+            reverse_map = {v: k for k, v in default_order.items()}
+            pack_names = FLOOR_PACKS[floor]
+            max_packs = len(pack_names)
+
+            for i in range(max_packs):
+                rowf = ctk.CTkFrame(master=frame, fg_color="transparent")
+                rowf.pack(pady=1, anchor="w")
+
+                label = ctk.CTkLabel(
+                    master=rowf,
+                    text=f"{i+1}.",
+                    anchor="e",
+                    font=ctk.CTkFont(size=18),
+                    text_color="#b0b0b0",
+                    width=30
+                )
+                label.pack(side="left", padx=(0, 10))
+
+                var = ctk.StringVar()
+                raw_name = reverse_map.get(i + 1)
+                pretty = raw_name if raw_name else "None"
+                var.set(pretty)
+
+                def bind_callback(floor=floor, idx=i, v=var):
+                    v.trace_add("write", lambda *a: pack_dropdown_callback(floor, idx))
+
+                dropdown = ctk.CTkOptionMenu(
+                    master=rowf,
+                    variable=var,
+                    values=pack_names + ["None"],
+                    width=160,
+                    font=ctk.CTkFont(size=16)
+                )
+                dropdown.pack(side="left")
+                bind_callback()
+                pack_dropdown_vars[floor].append(var)
+
+    # Pack Exceptions section
+    ctk.CTkLabel(settings_scroll, text="Pack Exceptions", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
+    
+    # Initialize pack exceptions
+    load_pack_exceptions()
+    global delayed_pack_exceptions_data
+    delayed_pack_exceptions_data = json.loads(json.dumps(pack_exceptions_data))
+    save_delayed_pack_exceptions(delayed_pack_exceptions_data)
+
+    pack_exceptions_container = ctk.CTkFrame(settings_scroll)
+    pack_exceptions_container.pack()
+
+    global pack_exception_expand_frames
+    pack_exception_expand_frames = {}
+
+    for col_idx, group in enumerate(PACK_COLUMNS):
+        col = ctk.CTkFrame(pack_exceptions_container, fg_color="transparent")
+        col.grid(row=0, column=col_idx, padx=15, sticky="n")
+
+        for row_idx, floor in enumerate(group):
+            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
+            wrapper.grid(row=row_idx, column=0, sticky="nw")
+
+            idx = FLOORS.index(floor)
+            arrow_var = ctk.StringVar(value="▶")
+            full_text = ctk.StringVar(value=f"{arrow_var.get()} {floor_labels[idx]}")
+
+            def make_toggle(f=floor, arrow=arrow_var):
+                return lambda: toggle_expand(pack_exception_expand_frames[f], arrow)
+
+            btn = ctk.CTkButton(
+                master=wrapper,
+                textvariable=full_text,
+                command=make_toggle(),
+                width=200,
+                height=38,
+                font=ctk.CTkFont(size=18),
+                anchor="w"
+            )
+            btn.pack(anchor="w", pady=(0, 6))
+
+            arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=floor_labels[idx]: textvar.set(f"{var.get()} {name}"))
+
+            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+            pack_exception_expand_frames[floor] = frame
+            frame.pack_forget()
+
+            # Initialize exception vars for this floor
+            if floor not in pack_exception_vars:
+                pack_exception_vars[floor] = {}
+            if floor not in pack_exceptions_data:
+                pack_exceptions_data[floor] = []
+            
+            # Create exceptions container with single column
+            exceptions_container = ctk.CTkFrame(frame, fg_color="transparent")
+            exceptions_container.pack(anchor="w", padx=20, fill="x")
+            
+            # Create checkboxes in single column - sync with pack_exceptions.json
+            packs = FLOOR_PACKS[floor]
+            for pack in packs:
+                var = ctk.BooleanVar(value=pack in pack_exceptions_data.get(floor, []))
+                def make_toggle_callback(floor=floor, pack=pack, var=var):
+                    return lambda: update_pack_exceptions_from_toggle(floor, pack)
+                cb = ctk.CTkCheckBox(
+                    exceptions_container,
+                    text=pack,
+                    variable=var,
+                    command=make_toggle_callback(),
+                    font=ctk.CTkFont(size=13)
+                )
+                cb.pack(anchor="w", pady=1)
+                pack_exception_vars[floor][pack] = var
+
+    # Fuse Exceptions section
+    ctk.CTkLabel(settings_scroll, text="Fuse Exceptions", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+    
+    # Initialize fuse exceptions
+    load_fusion_exceptions()
+    
+    # Create fuse exceptions container
+    fuse_exceptions_container = ctk.CTkFrame(settings_scroll)
+    fuse_exceptions_container.pack(pady=(0, 15))
+    
+    # Create fuse exceptions expandable section
+    fuse_images = load_fuse_exception_images()
+    
+    if fuse_images:
+        # Create wrapper for the expandable section
+        wrapper = ctk.CTkFrame(master=fuse_exceptions_container, fg_color="transparent")
+        wrapper.pack(fill="x", padx=10, pady=10)
+        
+        # Create expandable button
+        arrow_var = ctk.StringVar(value="▶")
+        full_text = ctk.StringVar(value=f"{arrow_var.get()} Fuse Exceptions")
+        
+        def make_fuse_toggle():
+            global fuse_exception_expand_frame
+            return lambda: toggle_expand(fuse_exception_expand_frame, arrow_var)
+        
+        btn = ctk.CTkButton(
+            master=wrapper,
+            textvariable=full_text,
+            command=make_fuse_toggle(),
+            width=200,
+            height=38,
+            font=ctk.CTkFont(size=18),
+            anchor="w"
+        )
+        btn.pack(anchor="w", pady=(0, 6))
+        
+        # Update button text when arrow changes
+        arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text: textvar.set(f"{var.get()} Fuse Exceptions"))
+        
+        # Create the expandable frame (hidden by default)
+        global fuse_exception_expand_frame
+        fuse_exception_expand_frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+        fuse_exception_expand_frame.pack_forget()  # Start hidden
+        
+        # Create checkboxes container
+        exceptions_container = ctk.CTkFrame(fuse_exception_expand_frame, fg_color="transparent")
+        exceptions_container.pack(anchor="w", padx=20, fill="x")
+        
+        # Create checkboxes for each image
+        for image_path in fuse_images:
+            filename = os.path.basename(image_path)
+            display_name = os.path.splitext(filename)[0]  # Remove extension
+            
+            # Create toggle variable (default OFF, ON if filename in saved exceptions)
+            # Now matches against just the filename without path/extension
+            var = ctk.BooleanVar(value=display_name in fusion_exceptions_data)
+            fuse_exception_vars[image_path] = var
+            
+            # Create checkbox
+            checkbox = ctk.CTkCheckBox(
+                exceptions_container,
+                text=display_name,
+                variable=var,
+                command=update_fuse_exception_from_toggle,
+                font=ctk.CTkFont(size=13)
+            )
+            checkbox.pack(anchor="w", pady=1)
+    else:
+        # Show message if no images found
+        no_images_label = ctk.CTkLabel(
+            fuse_exceptions_container, 
+            text="No images found in pictures/CustomFuse directory", 
+            font=ctk.CTkFont(size=12)
+        )
+        no_images_label.pack(pady=10)
+
+    # Display Settings section
+    ctk.CTkLabel(settings_scroll, text="Display Settings", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+    
+    monitor_frame = ctk.CTkFrame(settings_scroll)
+    monitor_frame.pack(pady=(0, 15))
+    
+    ctk.CTkLabel(monitor_frame, text="Game Monitor:", font=ctk.CTkFont(size=14)).pack(side="left", padx=(10, 10))
+    try:
+        available_monitors = get_available_monitors()
+        monitor_options = [monitor['text'] for monitor in available_monitors]
+        
+        current_monitor = shared_vars.GAME_MONITOR_INDEX.value
+        if current_monitor <= len(monitor_options):
+            default_monitor = monitor_options[current_monitor - 1]
+        else:
+            default_monitor = monitor_options[0] if monitor_options else "Monitor 1 (Unknown)"
+            
+    except Exception as e:
+        error(f"Error getting monitor options: {e}")
+        monitor_options = ["Monitor 1 (Unknown)"]
+        default_monitor = monitor_options[0]
+    
+    monitor_var = ctk.StringVar(value=default_monitor)
+    monitor_dropdown = ctk.CTkOptionMenu(
+        monitor_frame,
+        variable=monitor_var,
+        values=monitor_options,
+        width=200,
+        font=ctk.CTkFont(size=14),
+        command=lambda choice: update_monitor_selection(choice, shared_vars)
+    )
+    monitor_dropdown.pack(side="left", padx=(0, 10))
+
+    # Mouse Offsets section
+    ctk.CTkLabel(settings_scroll, text="Mouse Offsets", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+    
+    # Mouse offsets frame
+    mouse_offsets_frame = ctk.CTkFrame(settings_scroll)
+    mouse_offsets_frame.pack(padx=20)
+    
+    # X Offset
+    x_offset_row = ctk.CTkFrame(mouse_offsets_frame)
+    x_offset_row.pack(pady=5)
+    ctk.CTkLabel(x_offset_row, text="X Offset:", width=100, anchor="e", font=ctk.CTkFont(size=16)).pack(side="left", padx=(10, 10))
+    x_offset_entry = ctk.CTkEntry(x_offset_row, width=100, font=ctk.CTkFont(size=16), fg_color="transparent")
+    x_offset_entry.pack(side="left", padx=(0, 10))
+    x_offset_entry.insert(0, str(shared_vars.x_offset.value))
+    
+    # Y Offset
+    y_offset_row = ctk.CTkFrame(mouse_offsets_frame)
+    y_offset_row.pack(pady=5)
+    ctk.CTkLabel(y_offset_row, text="Y Offset:", width=100, anchor="e", font=ctk.CTkFont(size=16)).pack(side="left", padx=(10, 10))
+    y_offset_entry = ctk.CTkEntry(y_offset_row, width=100, font=ctk.CTkFont(size=16), fg_color="transparent")
+    y_offset_entry.pack(side="left", padx=(0, 10))
+    y_offset_entry.insert(0, str(shared_vars.y_offset.value))
+    
+    # Functions to update offsets
+    def update_x_offset():
+        """Update X offset from entry field"""
+        try:
+            new_value = int(x_offset_entry.get())
+            shared_vars.x_offset.value = new_value
+            save_gui_config()
+            info(f"Updated X offset to: {new_value}")
+        except ValueError:
+            messagebox.showerror("Invalid Input", "X Offset must be a valid number.")
+            x_offset_entry.delete(0, 'end')
+            x_offset_entry.insert(0, str(shared_vars.x_offset.value))
+    
+    def update_y_offset():
+        """Update Y offset from entry field"""
+        try:
+            new_value = int(y_offset_entry.get())
+            shared_vars.y_offset.value = new_value
+            save_gui_config()
+            info(f"Updated Y offset to: {new_value}")
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Y Offset must be a valid number.")
+            y_offset_entry.delete(0, 'end')
+            y_offset_entry.insert(0, str(shared_vars.y_offset.value))
+    
+    # Bind the entry fields to update functions
+    x_offset_entry.bind('<Return>', lambda e: update_x_offset())
+    y_offset_entry.bind('<Return>', lambda e: update_y_offset())
+    
+    # Help text for offsets
+    offset_help = ctk.CTkLabel(
+        mouse_offsets_frame, 
+        text="Adjust mouse click coordinates. Positive values move right/down, negative values move left/up.",
+        font=ctk.CTkFont(size=12), 
+        text_color="gray"
+    )
+    offset_help.pack(pady=(5, 10))
+
+    # Misc Settings
+    ctk.CTkLabel(settings_scroll, text="Misc:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+    misc_frame = ctk.CTkFrame(settings_scroll)
+    misc_frame.pack()
+    
+    debug_image_var = ctk.BooleanVar(value=shared_vars.debug_image_matches.value)
+    def update_debug_image_matches():
+        shared_vars.debug_image_matches.value = debug_image_var.get()
+        save_gui_config()
+    debug_image_checkbox = ctk.CTkCheckBox(
+        misc_frame, 
+        text="Debug Image Matches", 
+        variable=debug_image_var,
+        command=update_debug_image_matches
+    )
+    debug_image_checkbox.pack(anchor="w", padx=10, pady=5)
+    
+    convert_images_to_grayscale_var = ctk.BooleanVar(value=shared_vars.convert_images_to_grayscale.value)
+    def update_convert_images_to_grayscale():
+        shared_vars.convert_images_to_grayscale.value = convert_images_to_grayscale_var.get()
+        save_gui_config()
+    convert_images_to_grayscale_checkbox = ctk.CTkCheckBox(
+        misc_frame, 
+        text="Convert images to grayscale (30%~ speed boost)", 
+        variable=convert_images_to_grayscale_var,
+        command=update_convert_images_to_grayscale
+    )
+    convert_images_to_grayscale_checkbox.pack(anchor="w", padx=10, pady=5)
+
+    # Reconnection delay
+    reconnection_delay_row = ctk.CTkFrame(misc_frame)
+    reconnection_delay_row.pack(pady=5, fill="x")
+    
+    ctk.CTkLabel(reconnection_delay_row, text="Delay Between Reconnection Attempts:", width=200, anchor="w", font=ctk.CTkFont(size=14)).pack(side="left", padx=(10, 10))
+    reconnection_delay_entry = ctk.CTkEntry(reconnection_delay_row, width=80, font=ctk.CTkFont(size=14))
+    reconnection_delay_entry.pack(side="left", padx=(0, 10))
+    reconnection_delay_entry.insert(0, str(shared_vars.reconnection_delay.value))
+    
+    def update_reconnection_delay():
+        try:
+            new_value = int(reconnection_delay_entry.get())
+            if new_value < 1:
+                raise ValueError("Must be at least 1 second")
+            shared_vars.reconnection_delay.value = new_value
+            save_gui_config()
+            info(f"Updated reconnection delay to: {new_value} seconds")
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", f"Reconnection delay must be a valid number (minimum 1): {e}")
+            reconnection_delay_entry.delete(0, 'end')
+            reconnection_delay_entry.insert(0, str(shared_vars.reconnection_delay.value))
+    
+    reconnection_delay_entry.bind('<Return>', lambda e: update_reconnection_delay())
+
+    # Reconnect only when internet is reachable toggle
+    reconnect_internet_var = ctk.BooleanVar(value=shared_vars.reconnect_when_internet_reachable.value)
+    def update_reconnect_internet():
+        shared_vars.reconnect_when_internet_reachable.value = reconnect_internet_var.get()
+        save_gui_config()
+    reconnect_internet_checkbox = ctk.CTkCheckBox(
+        misc_frame, 
+        text="Reconnect only When Internet Is Reachable", 
+        variable=reconnect_internet_var,
+        command=update_reconnect_internet
+    )
+    reconnect_internet_checkbox.pack(anchor="w", padx=10, pady=5)
+
+    # skip automations
+    ctk.CTkLabel(settings_scroll, text="Automation Settings:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+    automation_frame = ctk.CTkFrame(settings_scroll)
+    automation_frame.pack()
+
+    skip_restshop_var = ctk.BooleanVar(value=shared_vars.skip_restshop.value)
+    def update_skip_restshop():
+        shared_vars.skip_restshop.value = skip_restshop_var.get()
+        save_gui_config()
+    skip_restshop_cb = ctk.CTkCheckBox(
+        automation_frame, 
+        text="Skip Rest Shop in Mirror Dungeon", 
+        variable=skip_restshop_var,
+        command=update_skip_restshop
+    )
+    skip_restshop_cb.pack(anchor="w", padx=10, pady=5)
+
+    skip_ego_check_var = ctk.BooleanVar(value=shared_vars.skip_ego_check.value)
+    def update_skip_ego_check():
+        shared_vars.skip_ego_check.value = skip_ego_check_var.get()
+        save_gui_config()
+    skip_ego_check_cb = ctk.CTkCheckBox(
+        automation_frame, 
+        text="Skip using EGO in Battle", 
+        variable=skip_ego_check_var,
+        command=update_skip_ego_check
+    )
+    skip_ego_check_cb.pack(anchor="w", padx=10, pady=5)
+
+    prioritize_list_var = ctk.BooleanVar(value=shared_vars.prioritize_list_over_status.value)
+    def update_prioritize_list():
+        shared_vars.prioritize_list_over_status.value = prioritize_list_var.get()
+        save_gui_config()
+    prioritize_list_cb = ctk.CTkCheckBox(
+        automation_frame, 
+        text="Prioritize Pack List Over Status Gifts", 
+        variable=prioritize_list_var,
+        command=update_prioritize_list
+    )
+    prioritize_list_cb.pack(anchor="w", padx=10, pady=5)
+
+    # Keyboard shortcut configuration section
+    ctk.CTkLabel(settings_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
     shortcuts_frame = ctk.CTkFrame(settings_scroll)
-    shortcuts_frame.pack(pady=(0, 15), fill="x", padx=20)
+    shortcuts_frame.pack()
 
     def update_shortcut(shortcut_type):
         """Update and apply a keyboard shortcut"""
@@ -1782,13 +2673,13 @@ def load_settings_tab():
                                 font=ctk.CTkFont(size=12), text_color="gray")
     shortcut_help.pack(pady=(5, 10))
 
-    # 4. MOVED: Updates section (from Others tab)
+    # Updates section
     if UPDATER_AVAILABLE:
-        ctk.CTkLabel(settings_scroll, text="Updates", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+        ctk.CTkLabel(settings_scroll, text="Updates", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
 
         # Update options frame
         update_frame = ctk.CTkFrame(settings_scroll)
-        update_frame.pack(pady=(0, 10), fill="x", padx=20)
+        update_frame.pack()
 
         # Auto update toggle - consolidated option
         auto_update_checkbox = ctk.CTkCheckBox(
@@ -1848,8 +2739,13 @@ def load_settings_tab():
         # Initially hidden - will be shown when updates are available
         update_now_button.pack_forget()
 
-    # 5. Theme selection section
-    ctk.CTkLabel(settings_scroll, text="Theme", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    # Theme selection section
+    ctk.CTkLabel(settings_scroll, text="Theme", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
+    
+    # Refresh themes to pick up any new theme files
+    global THEMES
+    THEMES = load_available_themes()
+    
     theme_dropdown = ctk.CTkOptionMenu(
         master=settings_scroll,
         variable=theme_var,
@@ -1860,10 +2756,10 @@ def load_settings_tab():
     )
     theme_dropdown.pack(pady=(0, 15))
 
-    # 6. Kill processes on exit toggle
-    ctk.CTkLabel(settings_scroll, text="Application Behavior", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 0))
+    # Kill processes on exit toggle
+    ctk.CTkLabel(settings_scroll, text="Application Behavior", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
     behavior_frame = ctk.CTkFrame(settings_scroll)
-    behavior_frame.pack(pady=(0, 15), fill="x", padx=20)
+    behavior_frame.pack()
 
     kill_processes_checkbox = ctk.CTkCheckBox(
         behavior_frame,
@@ -1915,6 +2811,7 @@ def load_logs_tab():
         """Toggle filtering of noisy messages"""
         global filtered_messages_enabled
         filtered_messages_enabled = filter_toggle.get()
+        common.CLEAN_LOGS_ENABLED = filtered_messages_enabled
         save_gui_config()
         load_log_file(reload_all=True)  # Reload logs with new filter setting
 
@@ -2018,7 +2915,7 @@ def load_logs_tab():
                 return False
         
         # Filter out noisy messages
-        if filtered_messages_enabled:
+        if common.CLEAN_LOGS_ENABLED:
             # Skip if message contains any filtered text
             for filtered_msg in FILTERED_MESSAGES:
                 if filtered_msg in line:
@@ -2080,7 +2977,6 @@ def load_logs_tab():
         log_text.configure(state="normal")
         log_text.delete("1.0", "end")
         log_text.configure(state="disabled")
-        info("GUI log display cleared")
 
     def clear_log_file():
         """Clear the content of the log file on disk"""
@@ -2126,7 +3022,6 @@ def load_logs_tab():
     )
     auto_reload_switch.pack(side="right", padx=5, pady=5)
 
-    # Create and add the optimized handler with filters
     log_handler = OptimizedLogHandler(log_text, log_filters, module_filters)
 
     # Add the handler to the ROOT logger to capture logs from all scripts
@@ -2185,36 +3080,35 @@ if load_settings_on_startup:
 # Register keyboard shortcuts based on config values
 register_keyboard_shortcuts()
 
-# =====================================================================
-# OPTIMIZED PROCESS MONITORING AND APPLICATION MANAGEMENT
-# =====================================================================
+# ===============================================
+# PROCESS MONITORING AND APPLICATION MANAGEMENT
+# ===============================================
 
-# Optimized process monitoring function
 def check_processes():
     """Check if processes are still running and update UI accordingly"""
     global process, exp_process, threads_process, function_process_list, battle_process
     
     # Check Mirror Dungeon process
     if process is not None:
-        if process.poll() is not None:
+        if not process.is_alive():
             # Process has ended
-            info(f"Mirror Dungeon process ended with code: {process.returncode}")
+            info(f"Mirror Dungeon process ended")
             process = None
             start_button.configure(text="Start")
     
     # Check Exp process
     if exp_process is not None:
-        if exp_process.poll() is not None:
+        if not exp_process.is_alive():
             # Process has ended
-            info(f"Exp process ended with code: {exp_process.returncode}")
+            info(f"Exp process ended")
             exp_process = None
             exp_start_button.configure(text="Start")
     
     # Check Threads process
     if threads_process is not None:
-        if threads_process.poll() is not None:
+        if not threads_process.is_alive():
             # Process has ended
-            info(f"Threads process ended with code: {threads_process.returncode}")
+            info(f"Threads process ended")
             threads_process = None
             threads_start_button.configure(text="Start")
     
@@ -2243,7 +3137,6 @@ def check_processes():
     # Schedule next check
     root.after(1000, check_processes)
 
-# OPTIMIZED: Much faster application exit handling
 def on_closing():
     """Handle application exit cleanup - OPTIMIZED VERSION"""
     try:
@@ -2252,13 +3145,20 @@ def on_closing():
         # OPTIMIZATION: Only kill processes if user wants us to
         if kill_processes_var.get():
             try:
-                # Kill processes quickly and don't wait for confirmation
-                if process:
-                    os.kill(process.pid, signal.SIGTERM)
-                if exp_process:
-                    os.kill(exp_process.pid, signal.SIGTERM)
-                if threads_process:
-                    os.kill(threads_process.pid, signal.SIGTERM)
+                # Kill multiprocessing processes
+                if process and process.is_alive():
+                    process.terminate()
+                    process.join(timeout=1)
+                if exp_process and exp_process.is_alive():
+                    exp_process.terminate()
+                    exp_process.join(timeout=1)
+                if threads_process and threads_process.is_alive():
+                    threads_process.terminate()
+                    threads_process.join(timeout=1)
+                
+                # Kill subprocess processes
+                if battle_process and battle_process.poll() is None:
+                    os.kill(battle_process.pid, signal.SIGTERM)
                 for proc in function_process_list:
                     if proc and proc.poll() is None:
                         os.kill(proc.pid, signal.SIGTERM)
@@ -2276,7 +3176,7 @@ def on_closing():
         # OPTIMIZATION: No config saving - settings are saved in real-time
         
     except Exception as e:
-        print(f"Error during application close: {e}")
+        error(f"Error during application close: {e}")
     finally:
         # OPTIMIZATION: Fast exit
         os._exit(0)
@@ -2284,11 +3184,10 @@ def on_closing():
 # Set the callback for window close
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
-# =====================================================================
-# OPTIMIZED APPLICATION STARTUP
-# =====================================================================
+# =======================
+# APPLICATION STARTUP
+# =======================
 
-# OPTIMIZED: Minimal startup - most content is lazy-loaded
 if __name__ == "__main__":
     def start_application():
         """Initialize the application after GUI is loaded - OPTIMIZED VERSION"""

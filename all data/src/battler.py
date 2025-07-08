@@ -1,25 +1,20 @@
 import sys
 import logging
 import os
-import core
 
-# Determine if running as executable or script
 def get_base_path():
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
         return os.path.dirname(sys.executable)
     else:
-        # Running as script
         folder_path = os.path.dirname(os.path.abspath(__file__))
-        # Check if we're in the src folder or main folder
         if os.path.basename(folder_path) == 'src':
             return os.path.dirname(folder_path)
         return folder_path
-
-# Get base path for resource access
 BASE_PATH = get_base_path()
 
-# Setting up basic logging configuration
+# Add src to path for imports
+sys.path.append(os.path.join(BASE_PATH, 'src'))
+
 LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
 logging.basicConfig(
     level=logging.DEBUG,
@@ -34,14 +29,12 @@ logger = logging.getLogger("battler")
 def main():
     """Run the battle function and exit immediately"""
     try:
-        logger.info("Starting battler.py - Running battle function")
-        
         try:
-            # Call the battle function
-            logger.info("Calling core.battle()")
-            core.battle()
+            # Import core - shared_vars will be automatically loaded
+            import core
             
-            logger.info("Battle function completed")
+            # Call the battle function
+            core.battle()
             
         except AttributeError:
             logger.error("Function 'battle' not found in module 'core'")
@@ -51,7 +44,6 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error in battler.py: {e}")
     finally:
-        logger.info("battler.py shutting down")
         sys.exit(0)
 
 if __name__ == "__main__":

@@ -5,19 +5,43 @@ and here's a guide for things that I think would be harder to grasp:
 starting macro:
 just be on the main screen and start, it will do all navigation and stuff all by itself
 
+number of runs:
+this just means how many times to complete, so mirror dungeon number of runs means how many times it does the 5 floors, so if you set 2 then it will complete 2 times/do 10 floors,
+for exp and threads it will do per run, I suggest putting this according to your enkephalin, so if you have 10 enkaphalin and you are gonna do mirror dungeon than type 2 in there.
+but use it however you want. no need to do extensive calculations since macro automatically detects running out of enkephalin and stops
+
 Your team section:
 so first of all, you need to go ingame, and change the name of a team to one of the things specified there, lets take burn for a example here.
-change team name to burn(if confusing refer to instructions images folder inside the all data folder) > in macro toggle on the burn > done! whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
+change team name to burn(if confusing refer to instructions images folder inside the all data folder) > in macro toggle on the burn > done!
+whatever name you choose is used to choose gifts, and items in mirror dungeon too, so if you choose burn then it will choose gifts and items which are burn
 
 extra info:
-if you toggle None then it wont choose a team and pick sinners from top left to bottom right, if you choose multiple then it will cycle through them, when choosing gifts and packs and you have none then it will use poise.
-Your team section is only for mirror dungeon, for exp and threads you should click enter on a thread/luxcavation then choose the team then go back to main menu, and activate the macro, the macro will keep using that team unless game has to reconnect due to network issues
+if you toggle None then it wont choose a team and pick sinners from top left to bottom right, if you choose multiple then it will cycle through them,
+when choosing gifts and packs and you have none then it will use poise.
+Your team section is only for mirror dungeon, for exp and threads you should click enter on a thread/luxcavation then choose the team then go back to main menu, and activate the macro,
+the macro will keep using that team unless game has to reconnect due to network issues
 
 assign sinner to name section:
-so here you just pick whatever sinner you want to be chosen and in which order on which team, so if you do 1: Ishmael and 2: rodion on burn and 1: rodion 2: Ishmael on rupture then it will apply Ishmael first if you chosen burn and rodion first if you chosen rupture as your team
+so here you just pick whatever sinner you want to be chosen and in which order on which team,
+so if you do 1: Ishmael and 2: rodion on burn and 1: rodion 2: Ishmael on rupture then it will apply Ishmael first if you chosen burn and rodion first if you chosen rupture as your team
 
-number of runs:
-this just means how many times to complete, so mirror dungeon number of runs means how many times it does the 5 floors, so if you set 2 then it will complete 2 times/do 10 floors, for exp and threads it will do per run, I suggest putting this according to your enkephalin, so if you have 10 enkaphalin and you are gonna do mirror dungeon than type 2 in there. but use it however you want.
+pack priority and exceptions:
+basically what packs to prioritize over which on respective floors, and what are hard exceptions, if something is in both priority and exceptions then exceptions will win/it will not be chosen.
+
+prioritize pack list over status gifts:
+basically whatever pack priority you chose for the respective floor will be prioritized first, it will try to find from that list first and if it cant then it will use a pack with same status.
+
+Misc:
+Debug image matches: draws rectangles around the images it finds
+Hard mode: toggles on hard mode in mirror dungeon
+convert images to grayscale: makes all the images it scans gray before scanning, this way it dont have to process rgb values, significantly increasing speed
+delay between reconnection attempts: if your wifi stops working a while like 1-2 minutes or smth and limbus company throws network error then there will be 2 options
+(close game) and (retry connection), but if you retry thrice without success then it forces you to close the game, whatever number you put here is the amount of time to wait between retrying
+reconnect only when internet is reachable: ignores the delay between retry attempts and clicks retry when internet starts working
+
+mouse offsets:
+use this if you have a weird aspect ratio monitor, tinker it by yourself so that everything is clicking at the right area.
+y = up/down, x = left/right, positive value = down/right, negative value = up/left
 
 graphics:
 make sure to be in fullscreen (alt+enter) ingame

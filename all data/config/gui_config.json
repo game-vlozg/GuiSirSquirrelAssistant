@@ -1,0 +1,65 @@
+{
+  "Settings": {
+    "theme": "Dark",
+    "mirror_runs": 1,
+    "exp_runs": 1,
+    "exp_stage": 1,
+    "threads_runs": 1,
+    "threads_difficulty": 20,
+    "window_width": 433,
+    "window_height": 344,
+    "clean_logs": true,
+    "github_owner": "Kryxzort",
+    "github_repo": "GuiSirSquirrelAssistant",
+    "auto_update": false,
+    "create_backups": true,
+    "update_notifications": true,
+    "kill_processes_on_exit": true,
+    "chain_threads_runs": 3,
+    "chain_exp_runs": 2,
+    "chain_mirror_runs": 1,
+    "game_monitor": 1
+  },
+  "SharedVars": {
+    "x_offset": 0,
+    "y_offset": 0,
+    "skip_restshop": false,
+    "skip_ego_check": false,
+    "debug_image_matches": false,
+    "hard_mode": false,
+    "convert_images_to_grayscale": true,
+    "reconnection_delay": 6,
+    "reconnect_when_internet_reachable": false,
+    "prioritize_list_over_status": false
+  },
+  "LogFilters": {
+    "debug": false,
+    "info": false,
+    "warning": true,
+    "error": true,
+    "critical": true
+  },
+  "ModuleFilters": {
+    "gui": true,
+    "mirror_dungeon": true,
+    "exp": true,
+    "threads": true,
+    "function": true,
+    "common": true,
+    "core": true,
+    "mirror": true,
+    "mirror_utils": true,
+    "theme": true,
+    "luxcavation": true,
+    "other": true
+  },
+  "Shortcuts": {
+    "mirror_dungeon": "ctrl+q",
+    "exp": "ctrl+e",
+    "threads": "ctrl+r",
+    "battle": "ctrl+t",
+    "call_function": "ctrl+g",
+    "terminate_functions": "ctrl+shift+g",
+    "chain_automation": "ctrl+b"
+  }
+}

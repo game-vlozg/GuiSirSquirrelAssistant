@@ -2,225 +2,272 @@ import sys
 import logging
 import os
 import threading
+import json
+import mirror
 
 logger = logging.getLogger(__name__)
-try:
-    # Log all environment and path information
-    logger.debug(f"Python executable: {sys.executable}")
-    logger.debug(f"Working directory: {os.getcwd()}")
-    logger.debug(f"Script path: {__file__}")
-    logger.debug(f"System path: {sys.path}")
-    
-    # Determine if running as executable or script
-    def get_base_path():
-        if getattr(sys, 'frozen', False):
-            # Running as compiled exe
-            base_path = os.path.dirname(sys.executable)
-            logger.debug(f"Running as frozen executable, base path: {base_path}")
-            return base_path
-        else:
-            # Running as script - go up one level to reach the "all data" directory
-            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            logger.debug(f"Running as script, base path: {base_path}")
-            return base_path
 
-    # Set up paths using base path
+def get_base_path():
+    """Get the correct base path for the application"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        base_path = os.path.dirname(sys.executable)
+        return base_path
+    else:
+        # Running as script - go up one level to reach the "all data" directory
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return base_path
+
+def setup_paths_and_imports():
+    """Set up paths and import required modules"""
     BASE_PATH = get_base_path()
-    logger.debug(f"Final BASE_PATH: {BASE_PATH}")
     
     # Add necessary paths
     src_path = os.path.join(BASE_PATH, 'src')
-    logger.debug(f"Adding src path: {src_path}")
     sys.path.append(src_path)
     sys.path.append(BASE_PATH)
     
-    # Log the paths for config files
+    # Verify config file exists
     config_path = os.path.join(BASE_PATH, "config")
-    status_path = os.path.join(config_path, "status_selection.txt")
-    logger.debug(f"Config path: {config_path}")
-    logger.debug(f"Status selection path: {status_path}")
+    status_json_path = os.path.join(config_path, "status_selection.json")
     
-    # Verify file exists before importing modules
-    if not os.path.exists(status_path):
-        logger.critical(f"Status selection file not found at: {status_path}")
-        raise FileNotFoundError(f"Status selection file not found: {status_path}")
-        
-    # Now import modules after path setup
-    logger.debug(f"Importing modules...")
+    if os.path.exists(status_json_path):
+        status_path = status_json_path
+    else:
+        logger.critical(f"Status selection file not found at: {status_json_path}")
+        raise FileNotFoundError(f"Status selection file not found: {status_json_path}")
+    
+    # Import modules
     
     try:
         from core import pre_md_setup, reconnect
-        logger.debug(f"Successfully imported from core")
-    except ImportError as e:
-        logger.critical(f"Failed to import from core: {e}")
-        raise
-        
-    try:
         from common import error_screenshot, element_exist
-        logger.debug(f"Successfully imported from common")
-    except ImportError as e:
-        logger.critical(f"Failed to import from common: {e}")
-        raise
-        
-    try:
         import mirror
-        logger.debug(f"Successfully imported mirror")
+        return BASE_PATH, status_path
     except ImportError as e:
-        logger.critical(f"Failed to import mirror: {e}")
+        logger.critical(f"Failed to import modules: {e}")
         raise
 
-    connection_event = threading.Event()
-
-    # Correctly resolve status selection file path
+def load_status_list(status_path):
     try:
-        logger.debug(f"Opening status selection file: {status_path}")
         with open(status_path, "r") as f:
-            status_list_file = [i.strip().lower() for i in f.readlines()]
-        logger.debug(f"Status list loaded: {status_list_file}")
+            data = json.load(f)
+            # Handle numbered priority format: {"1": "burn", "2": "poise"}
+            if all(key.isdigit() for key in data.keys()):
+                # Sort by number and extract values in priority order
+                sorted_items = sorted(data.items(), key=lambda x: int(x[0]))
+                statuses = [item[1] for item in sorted_items]
+            else:
+                # Fallback to old format: {"selected_statuses": [...]}
+                statuses = data.get("selected_statuses", [])
+            return [status.strip().lower() for status in statuses if status.strip()]
     except Exception as e:
         logger.critical(f"Error reading status selection file: {e}")
         raise
 
-    def connection_check():
+class ConnectionManager:
+    """Manages connection checking and reconnection"""
+    
+    def __init__(self):
+        self.connection_event = threading.Event()
+        self.connection_event.set()  # Start with connection assumed good
+    
+    def start_connection_monitor(self):
+        """Start the connection monitoring thread"""
+        connection_thread = threading.Thread(target=self._connection_check, daemon=True)
+        connection_thread.start()
+    
+    def _connection_check(self):
+        """Monitor connection status"""
+        from common import element_exist
+        
         while True:
             try:
                 if element_exist("pictures/general/connection.png"):
-                    connection_event.clear()
-                    logger.debug(f"Connection check: connection issue found")
+                    self.connection_event.clear()
                 else:
-                    connection_event.set()
-                    logger.debug(f"Connection check: connection OK")
+                    self.connection_event.set()
             except Exception as e:
                 logger.error(f"Error in connection check: {e}")
-
-    def connection_listener():
+    
+    def handle_reconnection(self):
+        """Handle reconnection when needed"""
         try:
-            logger.debug(f"Connection listener started")
-            reconnect()
-            logger.debug(f"Connection listener completed")
+            from core import reconnect
+            from common import element_exist
+            
+            logger.warning(f"Server error detected")
+            self.connection_event.clear()
+            
+            connection_listener_thread = threading.Thread(target=reconnect)
+            connection_listener_thread.start()
+            connection_listener_thread.join()
+            
+            self.connection_event.set()
         except Exception as e:
-            logger.error(f"Error in connection listener: {e}")
+            logger.error(f"Error in reconnection: {e}")
 
-    def mirror_dungeon_run(num_runs):
-        try:
-            run_count = 0
-            win_count = 0
-            lose_count = 0
+def mirror_dungeon_run(num_runs, status_list_file, connection_manager, shared_vars):
+    """Main mirror dungeon run logic"""
+    try:
+        from core import pre_md_setup
+        from common import element_exist, error_screenshot
+        
+        run_count = 0
+        win_count = 0
+        lose_count = 0
+        
+        # Ensure we have status selections
+        if not status_list_file:
+            logger.critical(f"Status list file is empty, cannot proceed")
+            return
             
-            # Ensure we have status selections
-            if not status_list_file:
-                logger.critical(f"Status list file is empty, cannot proceed")
-                return
-                
-            # Create status list for runs
-            status_list = (status_list_file * ((num_runs // len(status_list_file)) + 1))[:num_runs]
-            logger.info(f"Starting Run with statuses: {status_list}")
+        # Create status list for runs
+        status_list = (status_list_file * ((num_runs // len(status_list_file)) + 1))[:num_runs]
+        logger.info(f"Starting Run with statuses: {status_list}")
+        
+        for i in range(num_runs):
+            logger.info(f"Run {run_count + 1}")
             
-            for i in range(num_runs):
-                logger.info(f"Run {run_count + 1}")
-                try:
-                    pre_md_setup()
+            try:
+                if pre_md_setup():
+
                     logger.info(f"Current Team: " + status_list[i])
                     run_complete = 0
                     
-                    # Create Mirror instance
-                    logger.debug(f"Creating Mirror instance with status: {status_list[i]}")
                     MD = mirror.Mirror(status_list[i])
                     
-                    # Set up mirror
-                    logger.debug(f"Setting up mirror")
                     MD.setup_mirror()
-                    
-                    # Main loop for this run
-                    while run_complete != 1:
-                        if connection_event.is_set():
-                            logger.debug(f"Connection is set, running mirror loop")
-                            win_flag, run_complete = MD.mirror_loop()
-                            logger.debug(f"Mirror loop returned: win_flag={win_flag}, run_complete={run_complete}")
-                        
-                        if element_exist("pictures/general/server_error.png"):
-                            logger.warning(f"Server error detected")
-                            connection_event.clear()
-                            logger.debug(f"Disconnected, Pausing")
-                            connection_listener_thread = threading.Thread(target=connection_listener)
-                            connection_listener_thread.start()
-                            connection_listener_thread.join()
-                            logger.debug(f"Reconnected, Resuming")
-                            connection_event.set()
-
-                    # Update counters
-                    if win_flag == 1:
-                        win_count += 1
-                        logger.info(f"Run {run_count + 1} completed with a win")
-                    else:
-                        lose_count += 1
-                        logger.info(f"Run {run_count + 1} completed with a loss")
-                    run_count += 1
-                    
-                except Exception as e:
-                    logger.exception(f"Error in run {run_count + 1}: {e}")
-                    error_screenshot()
-                    # Continue with next run instead of breaking out
-                    run_count += 1
                 
-            logger.info(f'Completed all runs. Won: {win_count}, Lost: {lose_count}')
-        except Exception as e:
-            logger.exception(f"Critical error in mirror_dungeon_run: {e}")
-            error_screenshot()
+                while run_complete != 1:
+                    if connection_manager.connection_event.is_set():
+                        win_flag, run_complete = MD.mirror_loop()
+                    else:
+                        # Connection lost, wait for it to be restored
+                        connection_manager.connection_event.wait()
+                    
+                    if element_exist("pictures/general/server_error.png"):
+                        connection_manager.handle_reconnection()
 
-    if __name__ == "__main__":
-        logger.info(f"compiled_runner.py main execution started")
+                if win_flag == 1:
+                    win_count += 1
+                    logger.info(f"Run {run_count + 1} completed with a win")
+                else:
+                    lose_count += 1
+                    logger.info(f"Run {run_count + 1} completed with a loss")
+                run_count += 1
+                
+            except Exception as e:
+                logger.exception(f"Error in run {run_count + 1}: {e}")
+                error_screenshot()
+                # Continue with next run instead of breaking out
+                run_count += 1
         
+        logger.info(f'Completed all runs. Won: {win_count}, Lost: {lose_count}')
+        
+    except Exception as e:
+        logger.exception(f"Critical error in mirror_dungeon_run: {e}")
+        from common import error_screenshot
+        error_screenshot()
+
+def setup_logging(base_path):
+    """Set up logging configuration"""
+    LOG_FILENAME = os.path.join(base_path, "Pro_Peepol's.log")
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(LOG_FILENAME)
+        ]
+    )
+
+def main(num_runs, shared_vars):
+    try:
+        logger.info(f"compiled_runner.py main function started with {num_runs} runs")
+        
+        base_path, status_path = setup_paths_and_imports()
+        
+        setup_logging(base_path)
+        
+        status_list_file = load_status_list(status_path)
+        
+        connection_manager = ConnectionManager()
+        connection_manager.start_connection_monitor()
+        
+        mirror_dungeon_run(num_runs, status_list_file, connection_manager, shared_vars)
+        logger.info(f"mirror_dungeon_run completed successfully")
+        
+    except Exception as e:
+        logger.critical(f"Unhandled exception in compiled_runner main: {e}")
         try:
-            # Setting up basic logging configuration
-            LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler(LOG_FILENAME)
-                ]
-            )
-            
-            # Set connection event
-            logger.debug(f"Setting connection event")
-            connection_event.set()
-            
-            # Start connection check thread
-            logger.debug(f"Starting connection check thread")
-            connection_thread = threading.Thread(target=connection_check, daemon=True)
-            connection_thread.start()
-            
-            # Get run count from command line
-            if len(sys.argv) > 1:
-                try:
-                    count = int(sys.argv[1])
-                    logger.info(f"Run count from arguments: {count}")
-                except ValueError:
-                    count = 1
-                    logger.warning(f"Invalid run count argument: {sys.argv[1]}, using default 1")
-            else:
-                count = 1
-                logger.info(f"No run count specified, using default 1")
-            
-            # Start mirror dungeon
-            logger.info(f"Starting mirror_dungeon_run with {count} runs")
-            mirror_dungeon_run(count)
-            logger.info(f"mirror_dungeon_run completed")
-            
-        except Exception as e:
-            logger.critical(f"Unhandled exception in compiled_runner main: {e}")
+            from common import error_screenshot
             error_screenshot()
-            sys.exit(1)  # Exit with error code
+        except:
+            pass  # Don't let screenshot errors crash the main error handler
+        return  # Return instead of sys.exit for multiprocessing
+
+if __name__ == "__main__":
+    """Legacy support for command line execution"""
+    logger.info(f"compiled_runner.py main execution started")
+    
+    try:
+        base_path, status_path = setup_paths_and_imports()
         
-        # Successful completion
-        logger.info(f"compiled_runner.py completed successfully")
+        setup_logging(base_path)
         
-except Exception as e:
-    # Catch any errors that happen during module setup
-    if 'logger' in locals():
-        logger.critical(f"Fatal error during setup: {e}")
-    else:
-        # Fallback if logger isn't set up yet
-        print(f"FATAL ERROR: {e}")
-    sys.exit(1)  # Exit with error code
+        # Get run count from command line
+        if len(sys.argv) > 1:
+            try:
+                count = int(sys.argv[1])
+                logger.info(f"Run count from arguments: {count}")
+            except ValueError:
+                count = 1
+                logger.warning(f"Invalid run count argument: {sys.argv[1]}, using default 1")
+        else:
+            count = 1
+            logger.info(f"No run count specified, using default 1")
+        
+        class FakeSharedVars:
+            def __init__(self):
+                x_offset = 0
+                y_offset = 0
+                if len(sys.argv) > 2:
+                    try:
+                        x_offset = int(sys.argv[2])
+                    except ValueError:
+                        pass
+                if len(sys.argv) > 3:
+                    try:
+                        y_offset = int(sys.argv[3])
+                    except ValueError:
+                        pass
+                
+                # Create fake Value objects
+                from multiprocessing import Value
+                self.x_offset = Value('i', x_offset)
+                self.y_offset = Value('i', y_offset)
+                # Add other default values
+                self.debug_mode = Value('b', False)
+                self.click_delay = Value('f', 0.5)
+        
+        fake_shared_vars = FakeSharedVars()
+        logger.info(f"Created fake shared vars for command line execution")
+        
+        status_list_file = load_status_list(status_path)
+        
+        connection_manager = ConnectionManager()
+        connection_manager.start_connection_monitor()
+        
+        mirror_dungeon_run(count, status_list_file, connection_manager, fake_shared_vars)
+        logger.info(f"mirror_dungeon_run completed successfully")
+        
+    except Exception as e:
+        logger.critical(f"Unhandled exception in compiled_runner main: {e}")
+        try:
+            from common import error_screenshot
+            error_screenshot()
+        except:
+            pass
+        sys.exit(1)  # Exit with error code for command line
+    
+    logger.info(f"compiled_runner.py completed successfully")

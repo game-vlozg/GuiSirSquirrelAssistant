@@ -43,25 +43,25 @@ def gift_choice(status):
 def squad_choice(status):
     match status:
         case "sinking":
-            return "pictures/squads/sinking.png"
+            return "pictures/CustomAdded1080p/general/squads/sinking.png"
         case "bleed":
-            return "pictures/squads/bleed.png"
+            return "pictures/CustomAdded1080p/general/squads/bleed.png"
         case "burn":
-            return "pictures/squads/burn.png"
+            return "pictures/CustomAdded1080p/general/squads/burn.png"
         case "charge":
-            return "pictures/squads/charge.png"        
+            return "pictures/CustomAdded1080p/general/squads/charge.png"        
         case "poise":
-            return "pictures/squads/poise.png"
+            return "pictures/CustomAdded1080p/general/squads/poise.png"
         case "rupture":
-            return "pictures/squads/rupture.png"
+            return "pictures/CustomAdded1080p/general/squads/rupture.png"
         case "tremor":
-            return "pictures/squads/tremor.png"
+            return "pictures/CustomAdded1080p/general/squads/tremor.png"
         case "slash":
-            return "pictures/squads/slash.png"
+            return "pictures/CustomAdded1080p/general/squads/slash.png"
         case "pierce":
-            return "pictures/squads/pierce.png"
+            return "pictures/CustomAdded1080p/general/squads/pierce.png"
         case "blunt":
-            return "pictures/squads/blunt.png"     
+            return "pictures/CustomAdded1080p/general/squads/blunt.png"     
 
 def pack_choice(status):   
     match status:
@@ -86,7 +86,17 @@ def pack_choice(status):
         case "blunt":
             return "pictures/mirror/packs/status/blunt_pack.png"
         
-def enhance_gift_choice(status):
+def get_status_gift_template(status):
+    """
+    Returns the template path for status gift images.
+    Used in multiple contexts: fusion detection, enhancement, market purchasing.
+    
+    Args:
+        status: The status type (e.g., "bleed", "poise", etc.)
+    
+    Returns:
+        str: Path to the status gift template image
+    """
     match status:
         case "sinking":
             return "pictures/mirror/restshop/enhance/sinking_enhance.png"
@@ -108,6 +118,9 @@ def enhance_gift_choice(status):
             return "pictures/mirror/restshop/enhance/pierce_enhance.png"
         case "blunt":
             return "pictures/mirror/restshop/enhance/blunt_enhance.png"
+
+# Backward compatibility alias
+enhance_gift_choice = get_status_gift_template
         
 def reward_choice(status):
     match status:
@@ -155,7 +168,17 @@ def market_choice(status):
         case "blunt":
             return "pictures/mirror/restshop/market/blunt_market.png"
         
-def fusion_choice(status):
+def get_fusion_target_button(status):
+    """
+    Returns the template path for fusion target selection buttons.
+    Used for selecting the target status type when fusing gifts.
+    
+    Args:
+        status: The target status type for fusion (e.g., "bleed", "poise", etc.)
+    
+    Returns:
+        str: Path to the fusion target button template image
+    """
     match status:
         case "sinking":
             return "pictures/mirror/restshop/fusion/sinking_fusion.png"
@@ -177,6 +200,9 @@ def fusion_choice(status):
             return "pictures/mirror/restshop/fusion/pierce_fusion.png"
         case "blunt":
             return "pictures/mirror/restshop/fusion/blunt_fusion.png"
+
+# Backward compatibility alias
+fusion_choice = get_fusion_target_button
         
 def enhance_shift(status):
     match status:

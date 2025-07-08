@@ -169,14 +169,27 @@ class Updater:
             logger.info(f"Already up to date: {current_clean}")
             return False, latest_clean, None
 
-    def should_exclude(self, file_path):
+    def should_exclude(self, file_path, dest_file_path=None):
         """Check if a file should be excluded from updates"""
         # Convert to Unix-style path for consistent matching
         normalized_path = file_path.replace("\\", "/")
         
-        # Explicitly exclude anything in the config directory
+        # Special handling for config directory: allow new files, protect existing ones
         if normalized_path.startswith("all data/config/") or normalized_path == "all data/config":
-            return True
+            # If this is a directory, exclude it
+            if normalized_path == "all data/config":
+                return True
+            
+            # If we have a destination path, check if the file already exists locally
+            if dest_file_path and os.path.exists(dest_file_path):
+                # File exists locally - exclude it to protect user settings
+                logger.info(f"Protecting existing config file: {normalized_path}")
+                return True
+            else:
+                # File doesn't exist locally - allow it (new config file)
+                if dest_file_path:  # Only log when we have a destination (actual file operation)
+                    logger.info(f"Adding new config file: {normalized_path}")
+                return False
             
         # Explicitly exclude backup and temp folders
         if normalized_path.startswith(f"{self.backup_folder}/") or normalized_path == self.backup_folder:
@@ -235,15 +248,15 @@ class Updater:
     def modify_backup_config(self, backup_dir):
         """
         Modify the backup's config to disable auto-update, preventing update loops.
-        IMPORTANT: This only modifies the BACKUP config, not the current/real config!
+        This only modifies the BACKUP config, not the current/real config
         """
-        # Possible locations for gui_config.txt in the backup
+        # Possible locations for gui_config.json in the backup
         possible_config_paths = [
-            os.path.join(backup_dir, "all data", "config", "gui_config.txt"),
-            os.path.join(backup_dir, "config", "gui_config.txt"),
+            os.path.join(backup_dir, "all data", "config", "gui_config.json"),
+            os.path.join(backup_dir, "config", "gui_config.json"),
         ]
         
-        # Search for gui_config.txt in the backup directory if not found in expected locations
+        # Search for gui_config.json in the backup directory if not found in expected locations
         config_path = None
         for path in possible_config_paths:
             if os.path.exists(path):
@@ -253,42 +266,41 @@ class Updater:
         # If not found in expected locations, search the entire backup directory
         if not config_path:
             for root, dirs, files in os.walk(backup_dir):
-                if "gui_config.txt" in files:
-                    config_path = os.path.join(root, "gui_config.txt")
+                if "gui_config.json" in files:
+                    config_path = os.path.join(root, "gui_config.json")
                     break
         
         if not config_path or not os.path.exists(config_path):
-            logger.warning(f"Could not find gui_config.txt in backup directory {backup_dir}")
-            logger.info("This is not critical - backup will work normally, just won't prevent update loops")
+            logger.warning(f"Could not find gui_config.json in backup directory {backup_dir}")
             return False
         
         try:
             logger.info(f"Modifying backup config at: {config_path}")
             
             # Load the backup's config file (NOT the current one!)
-            config = configparser.ConfigParser()
-            config.read(config_path)
+            config_data = {}
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
             
             # Ensure Settings section exists
-            if 'Settings' not in config:
-                config['Settings'] = {}
+            if 'Settings' not in config_data:
+                config_data['Settings'] = {}
             
             # Get current values for logging
-            old_auto_update = config.get('Settings', 'auto_update', fallback='Unknown')
-            old_notifications = config.get('Settings', 'update_notifications', fallback='Unknown')
+            old_auto_update = config_data['Settings'].get('auto_update', 'Unknown')
+            old_notifications = config_data['Settings'].get('update_notifications', 'Unknown')
             
             # Disable auto-update and notifications in the BACKUP ONLY
-            config.set('Settings', 'auto_update', 'False')
-            config.set('Settings', 'update_notifications', 'False')
+            config_data['Settings']['auto_update'] = False
+            config_data['Settings']['update_notifications'] = False
             
             # Add a note to indicate this is a backup (optional)
-            config.set('Settings', '_backup_version', 'True')
+            config_data['Settings']['_backup_version'] = True
             
             # Write the modified config back to the BACKUP location only
             with open(config_path, 'w') as configfile:
-                config.write(configfile)
+                json.dump(config_data, configfile, indent=2)
             
-            logger.info(f"[SUCCESS] Successfully modified backup config:")
             logger.info(f"   - auto_update: {old_auto_update} -> False")
             logger.info(f"   - update_notifications: {old_notifications} -> False")
             logger.info(f"   - Location: {config_path}")
@@ -315,7 +327,6 @@ class Updater:
                 # Create parent directory first, then the specific backup directory
                 os.makedirs(self.backup_path, exist_ok=True)
                 os.makedirs(backup_dir, exist_ok=True)
-                logger.info(f"Successfully created backup directory at {backup_dir}")
             except Exception as e:
                 logger.error(f"Failed to create backup directory at {backup_dir}: {e}")
                 return None
@@ -445,14 +456,14 @@ class Updater:
                 else:
                     file_rel_path = os.path.join(rel_path, file).replace("\\", "/")
                 
-                # Skip if this file should be excluded
-                if self.should_exclude(file_rel_path):
-                    logger.info(f"Skipping excluded file: {file_rel_path}")
-                    continue
-                
                 # Copy the file
                 src_file = os.path.join(root, file)
                 dest_file = os.path.join(dest_dir, rel_path, file)
+                
+                # Skip if this file should be excluded
+                if self.should_exclude(file_rel_path, dest_file):
+                    logger.info(f"Skipping excluded file: {file_rel_path}")
+                    continue
                 
                 # Create parent directories if needed
                 os.makedirs(os.path.dirname(dest_file), exist_ok=True)
