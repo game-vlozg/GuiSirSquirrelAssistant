@@ -7,6 +7,7 @@ import signal
 import threading
 
 def get_base_path():
+    """Get the base directory path"""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     else:
@@ -17,28 +18,30 @@ BASE_PATH = get_base_path()
 sys.path.append(BASE_PATH)
 sys.path.append(os.path.join(BASE_PATH, 'src'))
 
-# Setting up basic logging configuration
-LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILENAME)
-    ]
-)
+import common
+
+# Logging configuration is handled by common.py
 logger = logging.getLogger(__name__)
 
 class ConnectionManager:
     """Manages connection checking and reconnection"""
     
     def __init__(self):
+        """Initialize connection manager"""
         self.connection_event = threading.Event()
         self.connection_event.set()  # Start with connection assumed good
     
     def start_connection_monitor(self):
         """Start the connection monitoring thread"""
-        connection_thread = threading.Thread(target=self._connection_check, daemon=True)
-        connection_thread.start()
+        try:
+            connection_thread = threading.Thread(target=self._connection_check, daemon=True)
+            connection_thread.start()
+        except RuntimeError as e:
+            if "main thread is not in main loop" in str(e):
+                logger.warning("Cannot start connection monitor thread in subprocess, using polling instead")
+                self._connection_check_polling()
+            else:
+                raise
     
     def _connection_check(self):
         """Monitor connection status"""
@@ -46,12 +49,24 @@ class ConnectionManager:
         
         while True:
             try:
-                if element_exist("pictures/general/connection.png"):
+                if element_exist("pictures/general/connection.png", quiet_failure=True):
                     self.connection_event.clear()
                 else:
                     self.connection_event.set()
             except Exception as e:
                 logger.error(f"Error in connection check: {e}")
+    
+    def _connection_check_polling(self):
+        """Simplified connection check without threading"""
+        from common import element_exist
+        
+        try:
+            if element_exist("pictures/general/connection.png", quiet_failure=True):
+                self.connection_event.clear()
+            else:
+                self.connection_event.set()
+        except Exception as e:
+            logger.error(f"Error in connection check: {e}")
     
     def handle_reconnection(self):
         """Handle reconnection when needed"""
@@ -61,9 +76,16 @@ class ConnectionManager:
             
             self.connection_event.clear()
             
-            connection_listener_thread = threading.Thread(target=reconnect)
-            connection_listener_thread.start()
-            connection_listener_thread.join()
+            try:
+                connection_listener_thread = threading.Thread(target=reconnect)
+                connection_listener_thread.start()
+                connection_listener_thread.join()
+            except RuntimeError as e:
+                if "main thread is not in main loop" in str(e):
+                    logger.warning("Cannot start reconnection thread in subprocess, using direct call")
+                    reconnect()
+                else:
+                    raise
             
             self.connection_event.set()
         except Exception as e:
@@ -138,7 +160,7 @@ def main(runs=None, difficulty=None, shared_vars=None):
                         # Handle case where common module isn't available
                         pass
                     except Exception as e:
-                        logger.error(f"Error checking for server error: {e}")
+                                logger.error(f"Error checking for server error: {e}")
                         
             except Exception as e:
                 logger.error(f"Error during Threads run {i+1}: {e}")

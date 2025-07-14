@@ -15,15 +15,10 @@ BASE_PATH = get_base_path()
 # Add src to path for imports
 sys.path.append(os.path.join(BASE_PATH, 'src'))
 
-LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILENAME)
-    ]
-)
-# Use a specific logger name instead of __name__ which becomes "__main__"
+# Import common to set up DirtyLogger
+import common
+
+# Logging configuration is handled by common.py
 logger = logging.getLogger("battler")
 
 def main():
@@ -32,6 +27,7 @@ def main():
         try:
             # Import core - shared_vars will be automatically loaded
             import core
+            
             
             # Call the battle function
             core.battle()

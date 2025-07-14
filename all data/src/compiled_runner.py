@@ -5,7 +5,7 @@ import threading
 import json
 import mirror
 
-logger = logging.getLogger(__name__)
+logger = None
 
 def get_base_path():
     """Get the correct base path for the application"""
@@ -34,18 +34,29 @@ def setup_paths_and_imports():
     if os.path.exists(status_json_path):
         status_path = status_json_path
     else:
-        logger.critical(f"Status selection file not found at: {status_json_path}")
+        # Use basic logging since custom logger not initialized yet
+        basic_logger = logging.getLogger(__name__)
+        basic_logger.critical(f"Status selection file not found at: {status_json_path}")
         raise FileNotFoundError(f"Status selection file not found: {status_json_path}")
     
     # Import modules
     
     try:
+        # Import common FIRST to set up DirtyLogger before other modules
+        import common
         from core import pre_md_setup, reconnect
         from common import error_screenshot, element_exist
         import mirror
+        
+        # Initialize logger after importing common (which sets up DirtyLogger)
+        global logger
+        logger = logging.getLogger(__name__)
+        
         return BASE_PATH, status_path
     except ImportError as e:
-        logger.critical(f"Failed to import modules: {e}")
+        # Create a basic logger for error reporting if imports fail
+        basic_logger = logging.getLogger(__name__)
+        basic_logger.critical(f"Failed to import modules: {e}")
         raise
 
 def load_status_list(status_path):
@@ -83,7 +94,7 @@ class ConnectionManager:
         
         while True:
             try:
-                if element_exist("pictures/general/connection.png"):
+                if element_exist("pictures/general/connection.png", quiet_failure=True):
                     self.connection_event.clear()
                 else:
                     self.connection_event.set()
@@ -171,23 +182,16 @@ def mirror_dungeon_run(num_runs, status_list_file, connection_manager, shared_va
         error_screenshot()
 
 def setup_logging(base_path):
-    """Set up logging configuration"""
-    LOG_FILENAME = os.path.join(base_path, "Pro_Peepol's.log")
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(LOG_FILENAME)
-        ]
-    )
+    """Logging configuration is handled by common.py"""
+    pass
 
 def main(num_runs, shared_vars):
     try:
-        logger.info(f"compiled_runner.py main function started with {num_runs} runs")
-        
         base_path, status_path = setup_paths_and_imports()
         
         setup_logging(base_path)
+        
+        logger.info(f"compiled_runner.py main function started with {num_runs} runs")
         
         status_list_file = load_status_list(status_path)
         
@@ -208,12 +212,13 @@ def main(num_runs, shared_vars):
 
 if __name__ == "__main__":
     """Legacy support for command line execution"""
-    logger.info(f"compiled_runner.py main execution started")
     
     try:
         base_path, status_path = setup_paths_and_imports()
         
         setup_logging(base_path)
+        
+        logger.info(f"compiled_runner.py main execution started")
         
         # Get run count from command line
         if len(sys.argv) > 1:

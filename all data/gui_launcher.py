@@ -4,6 +4,7 @@ import signal
 import os
 import sys
 import platform
+import tkinter as tk
 from tkinter import messagebox
 import keyboard
 import json
@@ -15,17 +16,51 @@ from threading import Thread
 import re
 import webbrowser
 from multiprocessing import Process, Value
+
+# Import common FIRST to set up DirtyLogger before any logging setup
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+import common
+
+
 #ez
 DISCORD_INVITE = "https://discord.gg/vccsv4Q4ta"
 def join_discord():
+    """Open Discord invite link"""
     webbrowser.open(DISCORD_INVITE)
 
+# Log display formatting functions
+
+
+def format_log_line_with_time_ago(line):
+    """Format log line for display with proper timestamp and clean message"""
+    try:
+        # Parse log line format: DD/MM/YYYY HH:MM:SS,mmm | module | LEVEL | function:line | message
+        parts = line.split(' | ', 4)
+        if len(parts) >= 4:
+            timestamp = parts[0]
+            module = parts[1]
+            level = parts[2]
+            func_line = parts[3]
+            message = parts[4] if len(parts) > 4 else ""
+            
+            # Remove DIRTY marker for display - users don't need to see it
+            message = message.replace(" | DIRTY", "")
+            
+            # Format: timestamp | module | LEVEL | function:line | message
+            formatted_line = f"{timestamp} | {module} | {level} | {func_line} | {message}"
+                
+            return formatted_line
+        else:
+            return line
+    except:
+        return line
+
+
 # =====================================================================
-# PATH HANDLING - IMPROVED DIRECTORY STRUCTURE DETECTION
+# Path handling
 # =====================================================================
 
 def get_correct_base_path():
-    """Get application base path"""
     if getattr(sys, 'frozen', False):
         base = os.path.dirname(sys.executable)
     else:
@@ -50,8 +85,7 @@ BASE_PATH = ALL_DATA_DIR  # Set BASE_PATH to "all data" folder
 # Add src to Python path for imports
 sys.path.append(os.path.join(BASE_PATH, 'src'))
 
-# Import common module for monitor functions
-import common # type: ignore
+# Import common module for monitor functions will be done later to avoid circular imports
 
 # Try to import the updater module
 try:
@@ -64,15 +98,20 @@ class SharedVars:
     def __init__(self):
         self.x_offset = Value('i', 0)
         self.y_offset = Value('i', 0)
-        self.GAME_MONITOR_INDEX = Value('i', 1)
+        self.game_monitor = Value('i', 1)
         self.skip_restshop = Value('b', False)
         self.skip_ego_check = Value('b', False)
+        self.skip_ego_fusion = Value('b', False)
+        self.skip_sinner_healing = Value('b', False)
+        self.skip_ego_enhancing = Value('b', False)
+        self.skip_ego_buying = Value('b', False)
         self.prioritize_list_over_status = Value('b', False)
         self.debug_image_matches = Value('b', False)
         self.hard_mode = Value('b', False)
         self.convert_images_to_grayscale = Value('b', True)
         self.reconnection_delay = Value('i', 6)
         self.reconnect_when_internet_reachable = Value('b', False)
+        self.good_pc_mode = Value('b', True)
 
 # Define python interpreter path based on whether we're frozen or not
 def get_python_command():
@@ -114,6 +153,11 @@ delayed_pack_priority_data = {}
 pack_dropdown_vars = {}
 pack_expand_frames = {}
 
+# Grace selection paths and data
+grace_selection_path = os.path.join(CONFIG_DIR, "grace_selection.json")
+grace_selection_data = {}
+grace_dropdown_vars = []
+
 # Pack exceptions paths
 pack_exceptions_path = os.path.join(CONFIG_DIR, "pack_exceptions.json")
 delayed_pack_exceptions_path = os.path.join(CONFIG_DIR, "delayed_pack_exceptions.json")
@@ -152,6 +196,54 @@ def delayed_pack_priority_sync():
     time.sleep(0.5)
     delayed_pack_priority_data.update(json.loads(json.dumps(pack_priority_data)))
     save_delayed_pack_priority(delayed_pack_priority_data)
+
+# Grace selection management functions
+def load_grace_selection():
+    global grace_selection_data
+    if os.path.exists(grace_selection_path):
+        with open(grace_selection_path, "r") as f:
+            grace_selection_data = json.load(f)
+    else:
+        grace_selection_data = {
+            "order": {
+                "Grace 1": 1,
+                "Grace 2": 2,
+                "Grace 3": 3,
+                "Grace 4": 4,
+                "Grace 5": 5
+            }
+        }
+        save_grace_selection(grace_selection_data)
+    return grace_selection_data
+
+def save_grace_selection(data):
+    with open(grace_selection_path, "w") as f:
+        json.dump(data, f, indent=4)
+
+def update_grace_selection_from_dropdown(idx):
+    entries = grace_dropdown_vars
+    updated = {}
+    for i, var in enumerate(entries):
+        val = var.get()
+        if val != "None":
+            updated[val] = i + 1
+    grace_selection_data["order"] = updated
+    save_grace_selection(grace_selection_data)
+    debug(f"Updated grace selection order")
+
+def grace_dropdown_callback(index, *_):
+    try:
+        new_val = grace_dropdown_vars[index].get()
+        if new_val == "None":
+            update_grace_selection_from_dropdown(index)
+            return
+        for i, var in enumerate(grace_dropdown_vars):
+            if i != index and var.get() == new_val:
+                var.set("None")
+                break
+        update_grace_selection_from_dropdown(index)
+    except Exception as e:
+        error(f"Error in grace dropdown callback: {e}")
 
 # Pack exceptions management functions
 def load_pack_exceptions():
@@ -274,15 +366,8 @@ def pack_dropdown_callback(floor, index, *_):
 # Create config directory if it doesn't exist
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
-# Setting up basic logging configuration
+# Logging is already configured in common.py - just get the logger
 LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILENAME)
-    ]
-)
 # Use "GUI" directly instead of __name__
 logger = logging.getLogger("GUI")
 
@@ -308,7 +393,7 @@ def critical(message):
 
 # Module names for log filtering
 LOG_MODULES = {
-    "GUI": "GUI",  # Changed from __main__ to GUI
+    "GUI": "GUI",
     "Mirror Dungeon": "compiled_runner",
     "Exp": "exp_runner",
     "Threads": "threads_runner",
@@ -322,26 +407,6 @@ LOG_MODULES = {
     "Other": "other"
 }
 
-# List of log messages to filter out (noise reduction)
-FILTERED_MESSAGES = [
-    "Loaded existing log file with filters applied",
-    "GUI initialized",
-    "Created tab layout with all tabs",
-    "Mirror Dungeon tab setup complete",
-    "Exp tab setup complete",
-    "Threads tab setup complete",
-    "Others tab setup complete",
-    "Settings tab setup complete",
-    "Help tab setup complete",
-    "Logs tab setup complete",
-    "Keyboard shortcuts registered from configuration",
-    "Starting Pro Peepol Macro application",
-    "Application closing",
-    "Application closed",
-    "Loaded squad data from file",
-    "Saved slow squad data to file",
-    "Registered keyboard shortcuts: ctrl+q (Mirror), ctrl+e (Exp), ctrl+r (Threads), ctrl+t (Battle)"
-]
 
 # =====================================================================
 # GLOBAL CONSTANTS
@@ -425,10 +490,10 @@ expand_frames = {}
 process = None
 exp_process = None
 threads_process = None
-function_process = None
 function_process_list = []  # List to track multiple function processes
 battle_process = None
 filtered_messages_enabled = True
+logging_enabled = True  # Do Not Log toggle
 is_update_available = False  # Track if updates are available
 
 # Chain automation variables
@@ -468,7 +533,6 @@ def safe_execute(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            error(f"Error in {func.__name__}: {e}")
             return None
     return wrapper
 
@@ -566,7 +630,7 @@ def check_process_conflict(process_name):
 
 # Initialize the main application window
 root = ctk.CTk()
-root.geometry("433x344")  # Default window size
+root.geometry("800x700")  # Default window size
 root.title("Pro Peepol Macro😎")
 original_title = root.title()  # Store original title for later restoration
 
@@ -605,6 +669,7 @@ def load_gui_config():
         'x_offset': 0,
         'skip_restshop': False,
         'skip_ego_check': False,
+        'skip_ego_fusion': False,
         'y_offset': 0,
         'game_monitor': 1,
         'debug_image_matches': False,
@@ -725,6 +790,7 @@ def save_gui_config(config=None):
                 'window_width': root.winfo_width() if 'root' in globals() else 433,
                 'window_height': root.winfo_height() if 'root' in globals() else 344,
                 'clean_logs': bool(filtered_messages_enabled) if 'filtered_messages_enabled' in globals() else True,
+                'logging_enabled': bool(logging_enabled) if 'logging_enabled' in globals() else True,
                 'github_owner': 'Kryxzort',
                 'github_repo': 'GuiSirSquirrelAssistant',
                 'auto_update': bool(auto_update_var.get()) if 'auto_update_var' in globals() else False,
@@ -734,20 +800,26 @@ def save_gui_config(config=None):
                 'chain_threads_runs': int(chain_threads_entry.get()) if 'chain_threads_entry' in globals() and chain_threads_entry.get().isdigit() else 3,
                 'chain_exp_runs': int(chain_exp_entry.get()) if 'chain_exp_entry' in globals() and chain_exp_entry.get().isdigit() else 2,
                 'chain_mirror_runs': int(chain_mirror_entry.get()) if 'chain_mirror_entry' in globals() and chain_mirror_entry.get().isdigit() else 1,
+                'grace_selection_order': {str(i+1): grace_dropdown_vars[i].get() for i in range(10) if 'grace_dropdown_vars' in globals() and len(grace_dropdown_vars) > i and grace_dropdown_vars[i].get() != 'None'} if 'grace_dropdown_vars' in globals() else {},
                 'x_offset': int(shared_vars.x_offset.value) if 'shared_vars' in globals() else 0,
                 'y_offset': int(shared_vars.y_offset.value) if 'shared_vars' in globals() else 0,
                 'skip_restshop': bool(shared_vars.skip_restshop.value) if 'shared_vars' in globals() else False,
                 'skip_ego_check': bool(shared_vars.skip_ego_check.value) if 'shared_vars' in globals() else False,
+                'skip_ego_fusion': bool(shared_vars.skip_ego_fusion.value) if 'shared_vars' in globals() else False,
+                'skip_sinner_healing': bool(shared_vars.skip_sinner_healing.value) if 'shared_vars' in globals() else False,
+                'skip_ego_enhancing': bool(shared_vars.skip_ego_enhancing.value) if 'shared_vars' in globals() else False,
+                'skip_ego_buying': bool(shared_vars.skip_ego_buying.value) if 'shared_vars' in globals() else False,
                 'prioritize_list_over_status': bool(shared_vars.prioritize_list_over_status.value) if 'shared_vars' in globals() else False,
-                'game_monitor': int(shared_vars.GAME_MONITOR_INDEX.value) if 'shared_vars' in globals() else 1,
+                'game_monitor': int(shared_vars.game_monitor.value) if 'shared_vars' in globals() else 1,
                 'debug_image_matches': bool(shared_vars.debug_image_matches.value) if 'shared_vars' in globals() else False,
                 'hard_mode': bool(shared_vars.hard_mode.value) if 'shared_vars' in globals() else False,
                 'convert_images_to_grayscale': bool(shared_vars.convert_images_to_grayscale.value) if 'shared_vars' in globals() else True,
                 'reconnection_delay': int(shared_vars.reconnection_delay.value) if 'shared_vars' in globals() else 6,
                 'reconnect_when_internet_reachable': bool(shared_vars.reconnect_when_internet_reachable.value) if 'shared_vars' in globals() else False,
+                'good_pc_mode': bool(shared_vars.good_pc_mode.value) if 'shared_vars' in globals() else True,
             }
         except Exception as e:
-            error(f"Error setting up Settings section: {e}")
+            pass
         
         # Save log filter settings if they exist
         try:
@@ -760,7 +832,7 @@ def save_gui_config(config=None):
                     'critical': bool(log_filters['CRITICAL'].get())
                 }
         except Exception as e:
-            error(f"Error setting up LogFilters section: {e}")
+            pass
         
         # Save module filter settings if they exist
         try:
@@ -768,7 +840,7 @@ def save_gui_config(config=None):
                 for module in LOG_MODULES:
                     config['ModuleFilters'][module.lower().replace(' ', '_')] = bool(module_filters[module].get())
         except Exception as e:
-            error(f"Error setting up ModuleFilters section: {e}")
+            pass
         
         # Save keyboard shortcuts if they exist
         try:
@@ -783,7 +855,7 @@ def save_gui_config(config=None):
                     'chain_automation': shortcut_vars['chain_automation'].get()
                 }
         except Exception as e:
-            error(f"Error setting up Shortcuts section: {e}")
+            pass
     
     try:
         # Make sure the config directory exists
@@ -815,27 +887,11 @@ def get_available_monitors():
         error(f"Error getting available monitors: {e}")
         return [{'index': 1, 'text': "Monitor 1 (Unknown)", 'resolution': "Unknown", 'monitor_data': {}}]
 
-def load_monitor_config():
-    try:
-        config_path = os.path.join(CONFIG_DIR, "gui_config.json")
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-                return config.get('Settings', {}).get('game_monitor', 1)
-        return 1  # Default to monitor 1
-    except Exception as e:
-        error(f"Error loading monitor config: {e}")
-        return 1
 
 def save_monitor_config(monitor_index):
     try:
-        config_path = os.path.join(CONFIG_DIR, "gui_config.json")
-        config = {}
-        
-        # Read existing config
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
+        # Use existing config loading function
+        config = load_gui_config()
         
         # Ensure Settings section exists
         if 'Settings' not in config:
@@ -844,7 +900,7 @@ def save_monitor_config(monitor_index):
         # Update monitor setting
         config['Settings']['game_monitor'] = monitor_index
         
-        with open(config_path, 'w') as f:
+        with open(GUI_CONFIG_PATH, 'w') as f:
             json.dump(config, f, indent=2)
         
         info(f"Monitor config saved: Monitor {monitor_index}")
@@ -855,7 +911,7 @@ def update_monitor_selection(choice, shared_vars):
     try:
         monitor_index = int(choice.split()[1])
         
-        shared_vars.GAME_MONITOR_INDEX.value = monitor_index
+        shared_vars.game_monitor.value = monitor_index
         common.set_game_monitor(monitor_index)
         save_monitor_config(monitor_index)
         
@@ -866,36 +922,51 @@ def update_monitor_selection(choice, shared_vars):
 
 config = load_gui_config()
 filtered_messages_enabled = config['Settings'].get('clean_logs', True)
+logging_enabled = config['Settings'].get('logging_enabled', True)
 
-import common # type: ignore
-common.CLEAN_LOGS_ENABLED = filtered_messages_enabled
+def init_common_settings():
+    """Initialize common module settings after import"""
+    try:
+        common.CLEAN_LOGS_ENABLED = filtered_messages_enabled
+        # Initialize async logging safely
+        common.initialize_async_logging()
+        # Set logging enabled state
+        if hasattr(common, 'set_logging_enabled'):
+            common.set_logging_enabled(logging_enabled)
+    except (ImportError, AttributeError):
+        pass  # Will be set later when common is available
+
+# Delay initialization to avoid circular imports
 
 try:
     shared_vars.x_offset.value = config['Settings'].get('x_offset', 0)
     shared_vars.y_offset.value = config['Settings'].get('y_offset', 0)
     
-    monitor_index = load_monitor_config()
-    shared_vars.GAME_MONITOR_INDEX.value = monitor_index
-    common.set_game_monitor(monitor_index)
+    monitor_index = config['Settings'].get('game_monitor', 1)
+    shared_vars.game_monitor.value = monitor_index
     info(f"Monitor initialized to Monitor {monitor_index}")
     
 except Exception as e:
     error(f"Error loading offset values: {e}")
     shared_vars.x_offset.value = 0
     shared_vars.y_offset.value = 0
-    shared_vars.GAME_MONITOR_INDEX.value = 1
-    common.set_game_monitor(1)
+    shared_vars.game_monitor.value = 1
 
-    try:
-        shared_vars.skip_restshop.value = config['Settings'].get('skip_restshop', False)
-        shared_vars.skip_ego_check.value = config['Settings'].get('skip_ego_check', False)
-        shared_vars.prioritize_list_over_status.value = config['Settings'].get('prioritize_list_over_status', False)
-        shared_vars.debug_image_matches.value = config['Settings'].get('debug_image_matches', False)
-        shared_vars.hard_mode.value = config['Settings'].get('hard_mode', False)
-        shared_vars.convert_images_to_grayscale.value = config['Settings'].get('convert_images_to_grayscale', True)
-        shared_vars.reconnection_delay.value = config['Settings'].get('reconnection_delay', 6)
-    except Exception as e:
-        error(f"Error loading automation settings: {e}")
+try:
+    shared_vars.skip_restshop.value = config['Settings'].get('skip_restshop', False)
+    shared_vars.skip_ego_check.value = config['Settings'].get('skip_ego_check', False)
+    shared_vars.skip_ego_fusion.value = config['Settings'].get('skip_ego_fusion', False)
+    shared_vars.skip_sinner_healing.value = config['Settings'].get('skip_sinner_healing', False)
+    shared_vars.skip_ego_enhancing.value = config['Settings'].get('skip_ego_enhancing', False)
+    shared_vars.skip_ego_buying.value = config['Settings'].get('skip_ego_buying', False)
+    shared_vars.prioritize_list_over_status.value = config['Settings'].get('prioritize_list_over_status', False)
+    shared_vars.debug_image_matches.value = config['Settings'].get('debug_image_matches', False)
+    shared_vars.hard_mode.value = config['Settings'].get('hard_mode', False)
+    shared_vars.convert_images_to_grayscale.value = config['Settings'].get('convert_images_to_grayscale', True)
+    shared_vars.reconnection_delay.value = config['Settings'].get('reconnection_delay', 6)
+    shared_vars.good_pc_mode.value = config['Settings'].get('good_pc_mode', True)
+except Exception as e:
+    error(f"Error loading automation settings: {e}")
 
 # Create log filter UI variables from config
 log_filters = {
@@ -991,8 +1062,11 @@ class OptimizedLogHandler(logging.Handler):
         self.update_thread = Thread(target=self._update_widget, daemon=True)
         self.update_thread.start()
         
-        # Set formatter for the handler
-        self.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        # Set formatter for the handler - use NoMillisecondsFormatter from common
+        self.setFormatter(common.NoMillisecondsFormatter(
+            fmt='%(asctime)s | %(name)s | %(levelname)s | %(funcName)s:%(lineno)d | %(message)s',
+            datefmt='%d/%m/%Y %H:%M:%S'
+        ))
         
         # File monitoring
         self.log_file_path = LOG_FILENAME
@@ -1015,17 +1089,19 @@ class OptimizedLogHandler(logging.Handler):
                     # Format the message and schedule GUI update
                     msg = self.format(record)
                     if self.running:  # Check again before scheduling
-                        root.after(0, self._append_log, msg)
+                        try:
+                            root.after(0, self._append_log, msg)
+                        except tk.TclError:
+                            # Main window was destroyed, stop the handler
+                            self.stop()
+                            break
                 
                 self.queue.task_done()
             except queue.Empty:
                 continue
             except Exception as e:
-                # Avoid crashing the thread on any error
-                try:
-                    error(f"Error in log update thread: {e}")
-                except:
-                    pass
+                # Silently ignore errors to avoid noise
+                pass
     
     def _should_show_record(self, record):
         """Check if record should be displayed based on filters"""
@@ -1036,6 +1112,10 @@ class OptimizedLogHandler(logging.Handler):
         if level_name in self.level_filters and module_name in self.module_filters:
             show_level = self.level_filters[level_name].get()
             show_module = self.module_filters[module_name].get()
+            
+            # Check if this is a dirty log when clean logs is enabled
+            if hasattr(record, 'dirty') and record.dirty and common.CLEAN_LOGS_ENABLED:
+                return False
             
             return show_level and show_module and self._should_show_message(record.getMessage())
         return False
@@ -1051,26 +1131,16 @@ class OptimizedLogHandler(logging.Handler):
     
     def _should_show_message(self, message):
         """Check if the message should be shown or filtered out as noise"""
-        if not common.CLEAN_LOGS_ENABLED:
-            return True
-            
-        # Check if the message contains any filtered message
-        for filtered_msg in FILTERED_MESSAGES:
-            if filtered_msg in message:
-                return False
-                
-        # Check for loaded pre-checked statuses pattern
-        if re.match(r"Loaded pre-checked statuses: .+", message):
-            return False
-            
         return True
     
     def _append_log(self, msg):
         """Append log message to the text widget"""
         try:
             if self.text_widget and self.running:
+                # Remove DIRTY marker for display - users don't need to see it
+                display_msg = msg.replace(" | DIRTY", "")
                 self.text_widget.configure(state="normal")
-                self.text_widget.insert("end", msg + "\n")
+                self.text_widget.insert("end", display_msg + "\n")
                 self.text_widget.see("end")
                 self.text_widget.configure(state="disabled")
         except Exception:
@@ -1231,11 +1301,9 @@ def kill_threads_bot():
 
 def kill_function_runner():
     """Kill Function Runner subprocess"""
-    global function_process, function_process_list
-    if terminate_process(function_process, "Function Runner"):
-        function_process = None
+    global function_process_list
     
-    # Also terminate any processes in the list
+    # Terminate any processes in the list
     for proc in function_process_list[:]:  # Use a copy of the list for iteration
         if proc and proc.poll() is None:  # Check if process is still running
             if terminate_process(proc, "Function Runner"):
@@ -1245,8 +1313,7 @@ def kill_function_runner():
     if 'function_terminate_button' in globals():
         function_terminate_button.configure(state="disabled")
 
-# MODIFIED: Updated process start function to pass shared memory
-def start_automation_process(process_type, command_args, button_ref, process_ref_name):
+def start_automation_process(process_type, button_ref, process_ref_name):
     """Unified function to start automation processes"""
     global process, exp_process, threads_process
     
@@ -1265,7 +1332,6 @@ def start_automation_process(process_type, command_args, button_ref, process_ref
             kill_threads_bot()
         return
     
-    # MODIFIED: Start subprocess using multiprocessing.Process instead of subprocess.Popen
     try:
         if process_type == "Mirror Dungeon":
             from src import compiled_runner
@@ -1312,7 +1378,7 @@ def start_run():
     save_selected_statuses()
     
     # Using multiprocessing instead of subprocess
-    start_automation_process("Mirror Dungeon", [], start_button, "process")
+    start_automation_process("Mirror Dungeon", start_button, "process")
 
 def start_exp_run():
     """Start Exp automation"""
@@ -1340,7 +1406,7 @@ def start_exp_run():
         return
 
     # Using multiprocessing instead of subprocess
-    start_automation_process("Exp", [], exp_start_button, "exp_process")
+    start_automation_process("Exp", exp_start_button, "exp_process")
 
 def start_threads_run():
     """Start Threads automation"""
@@ -1368,7 +1434,7 @@ def start_threads_run():
         return
     
     # Using multiprocessing instead of subprocess
-    start_automation_process("Threads", [], threads_start_button, "threads_process")
+    start_automation_process("Threads", threads_start_button, "threads_process")
 
 # =====================================================================
 # CHAIN AUTOMATION FUNCTIONS
@@ -1456,7 +1522,6 @@ def run_next_chain_step():
     if automation_type == "Mirror":
         save_selected_statuses()
     
-    # MODIFIED: Start the appropriate automation using multiprocessing
     try:
         if automation_type == "Threads":
             from src import threads_runner
@@ -1689,29 +1754,99 @@ def apply_theme():
             messagebox.showerror("Error", f"Failed to apply theme: {e}")
 
 # Keyboard shortcut management
-def register_keyboard_shortcuts():
-    """Register keyboard shortcuts based on current settings"""
-    # Unhook all existing keyboard shortcuts
-    keyboard.unhook_all()
-    
-    try:
-        # Register the shortcuts from the configuration
-        keyboard.add_hotkey(shortcut_vars['mirror_dungeon'].get(), toggle_button)
-        keyboard.add_hotkey(shortcut_vars['exp'].get(), toggle_exp_button)
-        keyboard.add_hotkey(shortcut_vars['threads'].get(), toggle_threads_button)
-        keyboard.add_hotkey(shortcut_vars['battle'].get(), start_battle)
-        keyboard.add_hotkey(shortcut_vars['call_function'].get(), call_function_shortcut)
-        keyboard.add_hotkey(shortcut_vars['terminate_functions'].get(), terminate_functions_shortcut)
-        keyboard.add_hotkey(shortcut_vars['chain_automation'].get(), toggle_chain_automation)
+class KeyboardHandler:
+    """Separate keyboard handler to avoid GUI blocking"""
+    def __init__(self):
+        self.command_queue = queue.Queue()
+        self.running = False
+        self.thread = None
+        self.shortcuts = {}
         
-        debug(f"Registered keyboard shortcuts: {shortcut_vars['mirror_dungeon'].get()} (Mirror), "
-              f"{shortcut_vars['exp'].get()} (Exp), {shortcut_vars['threads'].get()} (Threads), "
-              f"{shortcut_vars['battle'].get()} (Battle), {shortcut_vars['call_function'].get()} (Call Function), "
-              f"{shortcut_vars['terminate_functions'].get()} (Terminate Functions), "
-              f"{shortcut_vars['chain_automation'].get()} (Chain Automation)")
-    except Exception as e:
-        error(f"Error registering keyboard shortcuts: {e}")
-        messagebox.showerror("Invalid Shortcut", f"Failed to register shortcuts: {e}\nPlease check your shortcut format.")
+    def start(self):
+        """Start the keyboard handler thread"""
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._keyboard_worker, daemon=True)
+            self.thread.start()
+            
+    def stop(self):
+        """Stop the keyboard handler thread"""
+        self.running = False
+        keyboard.unhook_all()
+        
+    def update_shortcuts(self, shortcuts_dict):
+        """Update keyboard shortcuts"""
+        self.shortcuts = shortcuts_dict.copy()
+        self.command_queue.put(('update_shortcuts', self.shortcuts))
+        
+    def _keyboard_worker(self):
+        """Worker thread for keyboard handling"""
+        while self.running:
+            try:
+                # Process commands from main thread
+                try:
+                    command, data = self.command_queue.get(timeout=0.1)
+                    if command == 'update_shortcuts':
+                        self._register_shortcuts(data)
+                except queue.Empty:
+                    pass
+                    
+            except Exception as e:
+                logger.error(f"Error in keyboard worker: {e}")
+                
+    def _register_shortcuts(self, shortcuts_dict):
+        """Register shortcuts in the keyboard thread"""
+        try:
+            keyboard.unhook_all()
+            
+            for shortcut_name, shortcut_key in shortcuts_dict.items():
+                if shortcut_key and shortcut_key.strip():
+                    # Queue the command instead of calling directly
+                    keyboard.add_hotkey(shortcut_key, lambda name=shortcut_name: self._queue_command(name))
+                    
+        except Exception as e:
+            logger.error(f"Error registering keyboard shortcuts: {e}")
+            
+    def _queue_command(self, command_name):
+        """Queue command to be executed by main thread"""
+        root.after(0, lambda: self._execute_command(command_name))
+        
+    def _execute_command(self, command_name):
+        """Execute command on main thread"""
+        try:
+            if command_name == 'mirror_dungeon':
+                toggle_button()
+            elif command_name == 'exp':
+                toggle_exp_button()
+            elif command_name == 'threads':
+                toggle_threads_button()
+            elif command_name == 'battle':
+                start_battle()
+            elif command_name == 'call_function':
+                call_function_shortcut()
+            elif command_name == 'terminate_functions':
+                terminate_functions_shortcut()
+            elif command_name == 'chain_automation':
+                toggle_chain_automation()
+        except Exception as e:
+            logger.error(f"Error executing keyboard command {command_name}: {e}")
+
+# Global keyboard handler instance
+keyboard_handler = KeyboardHandler()
+
+def register_keyboard_shortcuts():
+    """Register keyboard shortcuts using separate handler"""
+    shortcuts_dict = {
+        'mirror_dungeon': shortcut_vars['mirror_dungeon'].get(),
+        'exp': shortcut_vars['exp'].get(),
+        'threads': shortcut_vars['threads'].get(),
+        'battle': shortcut_vars['battle'].get(),
+        'call_function': shortcut_vars['call_function'].get(),
+        'terminate_functions': shortcut_vars['terminate_functions'].get(),
+        'chain_automation': shortcut_vars['chain_automation'].get()
+    }
+    
+    keyboard_handler.update_shortcuts(shortcuts_dict)
 
 # Initialize theme settings
 theme_var = ctk.StringVar(value=config['Settings'].get('theme', 'Dark'))
@@ -1748,7 +1883,6 @@ tab_settings = tabs.add("Settings")
 tab_help = tabs.add("Help")
 tab_logs = tabs.add("Logs")
 
-# FIXED: Handle theme restart and Settings tab loading
 is_theme_restart = len(sys.argv) > 1 and sys.argv[1] in THEMES.keys()
 load_settings_on_startup = is_theme_restart and len(sys.argv) > 2 and sys.argv[2] == "Settings"
 
@@ -1790,18 +1924,475 @@ entry.bind('<Return>', lambda e: update_mirror_runs())
 start_button = ctk.CTkButton(scroll, text="Start", command=toggle_button)
 start_button.pack(pady=(0, 15))
 
-# Hard Mode toggle
-hard_mode_var = ctk.BooleanVar(value=shared_vars.hard_mode.value)
-def update_hard_mode():
-    shared_vars.hard_mode.value = hard_mode_var.get()
-    save_gui_config()
-hard_mode_checkbox = ctk.CTkCheckBox(
-    scroll, 
-    text="Hard Mode", 
-    variable=hard_mode_var,
-    command=update_hard_mode
+master_settings_container = ctk.CTkFrame(scroll)
+master_settings_container.pack(anchor="center", pady=(0, 15))
+
+# Create wrapper for the master expandable section
+master_wrapper = ctk.CTkFrame(master=master_settings_container, fg_color="transparent")
+master_wrapper.pack(fill="x", padx=10, pady=10)
+
+# Create button container to keep button centered
+button_container = ctk.CTkFrame(master=master_wrapper, fg_color="transparent")
+button_container.pack(anchor="center")
+
+# Create master expandable button
+master_arrow_var = ctk.StringVar(value="▶")
+master_settings_loaded = False
+
+def make_master_toggle(button_ref=None):
+    global master_expand_frame, master_settings_loaded
+    def toggle():
+        global master_settings_loaded
+        toggle_expand(master_expand_frame, master_arrow_var)
+        if button_ref:
+            button_ref.configure(text=f"{master_arrow_var.get()} Settings")
+        
+        # Lazy load mirror settings only when first expanded
+        if master_arrow_var.get() == "▼" and not master_settings_loaded:
+            load_mirror_settings()
+            master_settings_loaded = True
+    return toggle
+
+master_btn = ctk.CTkButton(
+    master=button_container,
+    text="▶ Settings",
+    command=None,
+    width=200,
+    height=38,
+    font=ctk.CTkFont(size=18),
+    anchor="w"
 )
-hard_mode_checkbox.pack(pady=(0, 15))
+master_btn.configure(command=make_master_toggle(master_btn))
+master_btn.pack(pady=(0, 6))
+
+# Create the master expandable frame (hidden by default)
+master_expand_frame = ctk.CTkFrame(master=master_wrapper, fg_color="transparent", corner_radius=0)
+master_expand_frame.pack_forget()
+
+def load_mirror_settings():
+    """Lazy load all mirror settings sections"""
+    global grace_expand_frame, fuse_exception_expand_frame
+    load_grace_selection()
+    
+    # Basic Settings section
+    ctk.CTkLabel(master_expand_frame, text="Basic Settings", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(8, 0))
+    
+    basic_settings_container = ctk.CTkFrame(master_expand_frame)
+    basic_settings_container.pack(anchor="center", pady=(0, 15))
+    
+    # Hard Mode checkbox
+    hard_mode_var = ctk.BooleanVar(value=shared_vars.hard_mode.value)
+    def update_hard_mode():
+        shared_vars.hard_mode.value = hard_mode_var.get()
+        save_gui_config()
+    hard_mode_checkbox = ctk.CTkCheckBox(
+        basic_settings_container, 
+        text="Hard Mode", 
+        variable=hard_mode_var,
+        command=update_hard_mode
+    )
+    hard_mode_checkbox.pack(anchor="w", padx=10, pady=5)
+    
+    # Skip Rest Shop checkbox
+    skip_restshop_var = ctk.BooleanVar(value=shared_vars.skip_restshop.value)
+    def update_skip_restshop():
+        shared_vars.skip_restshop.value = skip_restshop_var.get()
+        save_gui_config()
+    skip_restshop_cb = ctk.CTkCheckBox(
+        basic_settings_container, 
+        text="Skip Rest Shop in Mirror Dungeon", 
+        variable=skip_restshop_var,
+        command=update_skip_restshop
+    )
+    skip_restshop_cb.pack(anchor="w", padx=10, pady=5)
+    
+    # Skip EGO Gift Fusion checkbox
+    skip_ego_fusion_var = ctk.BooleanVar(value=shared_vars.skip_ego_fusion.value)
+    def update_skip_ego_fusion():
+        shared_vars.skip_ego_fusion.value = skip_ego_fusion_var.get()
+        save_gui_config()
+    skip_ego_fusion_cb = ctk.CTkCheckBox(
+        basic_settings_container,
+        text="Skip EGO gift fusion",
+        variable=skip_ego_fusion_var,
+        command=update_skip_ego_fusion
+    )
+    skip_ego_fusion_cb.pack(anchor="w", padx=10, pady=5)
+    
+    # Skip EGO Healing checkbox
+    skip_sinner_healing_var = ctk.BooleanVar(value=shared_vars.skip_sinner_healing.value)
+    def update_skip_sinner_healing():
+        shared_vars.skip_sinner_healing.value = skip_sinner_healing_var.get()
+        save_gui_config()
+    skip_sinner_healing_cb = ctk.CTkCheckBox(
+        basic_settings_container,
+        text="Skip sinner healing",
+        variable=skip_sinner_healing_var,
+        command=update_skip_sinner_healing
+    )
+    skip_sinner_healing_cb.pack(anchor="w", padx=10, pady=5)
+    
+    # Skip EGO Enhancing checkbox
+    skip_ego_enhancing_var = ctk.BooleanVar(value=shared_vars.skip_ego_enhancing.value)
+    def update_skip_ego_enhancing():
+        shared_vars.skip_ego_enhancing.value = skip_ego_enhancing_var.get()
+        save_gui_config()
+    skip_ego_enhancing_cb = ctk.CTkCheckBox(
+        basic_settings_container,
+        text="Skip EGO gift enhancing",
+        variable=skip_ego_enhancing_var,
+        command=update_skip_ego_enhancing
+    )
+    skip_ego_enhancing_cb.pack(anchor="w", padx=10, pady=5)
+    
+    # Skip EGO Buying checkbox
+    skip_ego_buying_var = ctk.BooleanVar(value=shared_vars.skip_ego_buying.value)
+    def update_skip_ego_buying():
+        shared_vars.skip_ego_buying.value = skip_ego_buying_var.get()
+        save_gui_config()
+    skip_ego_buying_cb = ctk.CTkCheckBox(
+        basic_settings_container,
+        text="Skip EGO gift buying",
+        variable=skip_ego_buying_var,
+        command=update_skip_ego_buying
+    )
+    skip_ego_buying_cb.pack(anchor="w", padx=10, pady=5)
+    
+    # Prioritize Pack List checkbox
+    prioritize_list_var = ctk.BooleanVar(value=shared_vars.prioritize_list_over_status.value)
+    def update_prioritize_list():
+        shared_vars.prioritize_list_over_status.value = prioritize_list_var.get()
+        save_gui_config()
+    prioritize_list_cb = ctk.CTkCheckBox(
+        basic_settings_container, 
+        text="Prioritize Pack List Over Status Gifts", 
+        variable=prioritize_list_var,
+        command=update_prioritize_list
+    )
+    prioritize_list_cb.pack(anchor="w", padx=10, pady=5)
+    
+    # Grace Selection section
+    ctk.CTkLabel(master_expand_frame, text="Grace Selection", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(8, 0))
+
+    # Define grace names and coordinates
+    GRACE_NAMES = ["star of the beniggening", "cumulating starcloud", "interstellar travel", "star shower", "binary star shop", "moon star shop", "favor of the nebula", "starlight guidance", "chance comet", "perfected possibility"]
+
+    grace_container = ctk.CTkFrame(master_expand_frame)
+    grace_container.pack(anchor="center", pady=(0, 15))
+
+    # Create wrapper for the expandable section
+    wrapper = ctk.CTkFrame(master=grace_container, fg_color="transparent")
+    wrapper.pack(fill="x", padx=10, pady=10)
+
+    # Create expandable button
+    arrow_var = ctk.StringVar(value="▶")
+
+    def make_grace_toggle(button_ref=None):
+        global grace_expand_frame
+        def toggle():
+            toggle_expand(grace_expand_frame, arrow_var)
+            if button_ref:
+                button_ref.configure(text=f"{arrow_var.get()} Grace Selection")
+        return toggle
+
+    btn = ctk.CTkButton(
+        master=wrapper,
+        text="▶ Grace Selection",
+        command=None,
+        width=200,
+        height=38,
+        font=ctk.CTkFont(size=18),
+        anchor="w"
+    )
+    btn.configure(command=make_grace_toggle(btn))
+    btn.pack(anchor="w", pady=(0, 6))
+
+    # Create the expandable frame (hidden by default)
+    grace_expand_frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+    grace_expand_frame.pack_forget()
+
+    default_order = grace_selection_data.get("order", {})
+    reverse_map = {v: k for k, v in default_order.items()}
+
+    for i in range(10):
+        rowf = ctk.CTkFrame(master=grace_expand_frame, fg_color="transparent")
+        rowf.pack(pady=1, anchor="w")
+
+        label = ctk.CTkLabel(
+            master=rowf,
+            text=f"{i+1}.",
+            anchor="e",
+            font=ctk.CTkFont(size=18),
+            text_color="#b0b0b0",
+            width=30
+        )
+        label.pack(side="left", padx=(0, 10))
+
+        var = ctk.StringVar()
+        raw_name = reverse_map.get(i + 1)
+        pretty = raw_name if raw_name else "None"
+        var.set(pretty)
+
+        def bind_callback(idx=i, v=var):
+            v.trace_add("write", lambda *a: grace_dropdown_callback(idx))
+
+        dropdown = ctk.CTkOptionMenu(
+            master=rowf,
+            variable=var,
+            values=GRACE_NAMES + ["None"],
+            width=160,
+            font=ctk.CTkFont(size=16),
+            dynamic_resizing=False
+        )
+        dropdown.pack(side="left")
+        bind_callback()
+        grace_dropdown_vars.append(var)
+
+    # Initialize required variables and data for mirror settings
+    load_pack_priority()
+    load_pack_exceptions()
+    load_fusion_exceptions()
+
+    delayed_pack_priority_data = json.loads(json.dumps(pack_priority_data))
+    delayed_pack_exceptions_data = json.loads(json.dumps(pack_exceptions_data))
+    save_delayed_pack_priority(delayed_pack_priority_data)
+    save_delayed_pack_exceptions(delayed_pack_exceptions_data)
+
+    pack_dropdown_vars = {}
+    pack_expand_frames = {}
+    pack_exception_expand_frames = {}
+
+    # Pack Priority section
+    ctk.CTkLabel(master_expand_frame, text="Pack Priority", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(8, 0))
+
+    # Define floors and floor labels
+    FLOORS = [f"floor{i}" for i in range(1, 6)]
+    floor_labels = [f"Floor {i}" for i in range(1, 6)]
+    PACK_COLUMNS = [["floor1", "floor2"], ["floor3", "floor4"], ["floor5"]]
+
+    # Define packs for each floor
+    FLOOR_PACKS = {
+        "floor1": ["erosion", "factory", "forgotten", "gamblers", "nagel", "nest", "outcast", "unloving"],
+        "floor2": ["cleaved", "crushed", "erosion", "factory", "gamblers", "hell", "lake", "nest", "pierced", "SEA", "unloving"],
+        "floor3": ["cleaved", "craving", "crushed", "dregs", "flood", "flowers", "indolence", "judgment", "pierced", "repression", "seduction", "subservience", "unconfronting"],
+        "floor4": ["crawling", "envy", "fullstop", "gloom", "gluttony", "lust", "miracle", "noon", "pride", "sloth", "tearful", "time", "violet", "warp", "world", "wrath", "yield"],
+        "floor5": ["crawling", "crushers", "envy", "gloom", "gluttony", "lcb_check", "lust", "nocturnal", "piercers", "pride", "slicers", "sloth", "tearful", "time", "warp", "world", "wrath", "yield"]
+    }
+
+    pack_container = ctk.CTkFrame(master_expand_frame)
+    pack_container.pack(anchor="center", pady=(0, 15))
+
+    for col_idx, group in enumerate(PACK_COLUMNS):
+        col = ctk.CTkFrame(pack_container, fg_color="transparent")
+        col.grid(row=0, column=col_idx, padx=15, sticky="n")
+
+        for row_idx, floor in enumerate(group):
+            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
+            wrapper.grid(row=row_idx, column=0, sticky="nw")
+
+            idx = FLOORS.index(floor)
+            arrow_var = ctk.StringVar(value="▶")
+
+            def make_toggle(f=floor, arrow=arrow_var, button_ref=None, floor_idx=idx):
+                def toggle():
+                    toggle_expand(pack_expand_frames[f], arrow)
+                    if button_ref:
+                        button_ref.configure(text=f"{arrow.get()} {floor_labels[floor_idx]}")
+                return toggle
+
+            btn = ctk.CTkButton(
+                master=wrapper,
+                text=f"▶ {floor_labels[idx]}",
+                command=None,
+                width=200,
+                height=38,
+                font=ctk.CTkFont(size=18),
+                anchor="w"
+            )
+            btn.configure(command=make_toggle(floor, arrow_var, btn))
+            btn.pack(anchor="w", pady=(0, 6))
+
+            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+            pack_expand_frames[floor] = frame
+            frame.pack_forget()
+
+            pack_dropdown_vars[floor] = []
+            default_order = pack_priority_data.get(floor, {})
+            reverse_map = {v: k for k, v in default_order.items()}
+            pack_names = FLOOR_PACKS[floor]
+            max_packs = len(pack_names)
+
+            for i in range(max_packs):
+                rowf = ctk.CTkFrame(master=frame, fg_color="transparent")
+                rowf.pack(pady=1, anchor="w")
+
+                label = ctk.CTkLabel(
+                    master=rowf,
+                    text=f"{i+1}.",
+                    anchor="e",
+                    font=ctk.CTkFont(size=18),
+                    text_color="#b0b0b0",
+                    width=30
+                )
+                label.pack(side="left", padx=(0, 10))
+
+                var = ctk.StringVar()
+                raw_name = reverse_map.get(i + 1)
+                pretty = raw_name if raw_name else "None"
+                var.set(pretty)
+
+                def bind_callback(floor=floor, idx=i, v=var):
+                    v.trace_add("write", lambda *a: pack_dropdown_callback(floor, idx))
+
+                dropdown = ctk.CTkOptionMenu(
+                    master=rowf,
+                    variable=var,
+                    values=pack_names + ["None"],
+                    width=160,
+                    font=ctk.CTkFont(size=16)
+                )
+                dropdown.pack(side="left")
+                bind_callback()
+                pack_dropdown_vars[floor].append(var)
+
+    # Pack Exceptions section
+    ctk.CTkLabel(master_expand_frame, text="Pack Exceptions", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(8, 0))
+
+    pack_exceptions_container = ctk.CTkFrame(master_expand_frame)
+    pack_exceptions_container.pack(anchor="center", pady=(0, 15))
+
+    for col_idx, group in enumerate(PACK_COLUMNS):
+        col = ctk.CTkFrame(pack_exceptions_container, fg_color="transparent")
+        col.grid(row=0, column=col_idx, padx=15, sticky="n")
+
+        for row_idx, floor in enumerate(group):
+            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
+            wrapper.grid(row=row_idx, column=0, sticky="nw")
+
+            idx = FLOORS.index(floor)
+            arrow_var = ctk.StringVar(value="▶")
+
+            def make_toggle(f=floor, arrow=arrow_var, button_ref=None, floor_idx=idx):
+                def toggle():
+                    toggle_expand(pack_exception_expand_frames[f], arrow)
+                    if button_ref:
+                        button_ref.configure(text=f"{arrow.get()} {floor_labels[floor_idx]}")
+                return toggle
+
+            btn = ctk.CTkButton(
+                master=wrapper,
+                text=f"▶ {floor_labels[idx]}",
+                command=None,
+                width=200,
+                height=38,
+                font=ctk.CTkFont(size=18),
+                anchor="w"
+            )
+            btn.configure(command=make_toggle(floor, arrow_var, btn))
+            btn.pack(anchor="w", pady=(0, 6))
+
+            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+            pack_exception_expand_frames[floor] = frame
+            frame.pack_forget()
+
+            # Initialize exception vars for this floor
+            if floor not in pack_exception_vars:
+                pack_exception_vars[floor] = {}
+            if floor not in pack_exceptions_data:
+                pack_exceptions_data[floor] = []
+            
+            # Create exceptions container with single column
+            exceptions_container = ctk.CTkFrame(frame, fg_color="transparent")
+            exceptions_container.pack(anchor="w", padx=20, fill="x")
+            
+            # Create checkboxes in single column - sync with pack_exceptions.json
+            packs = FLOOR_PACKS[floor]
+            for pack in packs:
+                var = ctk.BooleanVar(value=pack in pack_exceptions_data.get(floor, []))
+                def make_toggle_callback(floor=floor, pack=pack, var=var):
+                    return lambda: update_pack_exceptions_from_toggle(floor, pack)
+                cb = ctk.CTkCheckBox(
+                    exceptions_container,
+                    text=pack,
+                    variable=var,
+                    command=make_toggle_callback(),
+                    font=ctk.CTkFont(size=13)
+                )
+                cb.pack(anchor="w", pady=1)
+                pack_exception_vars[floor][pack] = var
+
+    # Fuse Exceptions section
+    ctk.CTkLabel(master_expand_frame, text="Fuse Exceptions", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(8, 0))
+
+    # Create fuse exceptions container
+    fuse_exceptions_container = ctk.CTkFrame(master_expand_frame)
+    fuse_exceptions_container.pack(anchor="center", pady=(0, 15))
+
+    # Create fuse exceptions expandable section
+    fuse_images = load_fuse_exception_images()
+
+    if fuse_images:
+        # Create wrapper for the expandable section
+        wrapper = ctk.CTkFrame(master=fuse_exceptions_container, fg_color="transparent")
+        wrapper.pack(fill="x", padx=10, pady=10)
+        
+        # Create expandable button
+        arrow_var = ctk.StringVar(value="▶")
+        
+        def make_fuse_toggle(button_ref=None):
+            global fuse_exception_expand_frame
+            def toggle():
+                toggle_expand(fuse_exception_expand_frame, arrow_var)
+                if button_ref:
+                    button_ref.configure(text=f"{arrow_var.get()} Fuse Exceptions")
+            return toggle
+        
+        btn = ctk.CTkButton(
+            master=wrapper,
+            text="▶ Fuse Exceptions",
+            command=None,
+            width=200,
+            height=38,
+            font=ctk.CTkFont(size=18),
+            anchor="w"
+        )
+        btn.configure(command=make_fuse_toggle(btn))
+        btn.pack(anchor="w", pady=(0, 6))
+        
+        # Create the expandable frame (hidden by default)
+        fuse_exception_expand_frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
+        fuse_exception_expand_frame.pack_forget()
+        
+        # Create checkboxes container
+        exceptions_container = ctk.CTkFrame(fuse_exception_expand_frame, fg_color="transparent")
+        exceptions_container.pack(anchor="w", padx=20, fill="x")
+        
+        # Create checkboxes for each image
+        for image_path in fuse_images:
+            filename = os.path.basename(image_path)
+            display_name = os.path.splitext(filename)[0]
+            
+            # Create toggle variable (default OFF, ON if filename in saved exceptions)
+            var = ctk.BooleanVar(value=display_name in fusion_exceptions_data)
+            fuse_exception_vars[image_path] = var
+            
+            # Create checkbox
+            checkbox = ctk.CTkCheckBox(
+                exceptions_container,
+                text=display_name,
+                variable=var,
+                command=update_fuse_exception_from_toggle,
+                font=ctk.CTkFont(size=13)
+            )
+            checkbox.pack(anchor="w", pady=1)
+    else:
+        # Show message if no images found
+        no_images_label = ctk.CTkLabel(
+            fuse_exceptions_container, 
+            text="No images found in pictures/CustomFuse directory", 
+            font=ctk.CTkFont(size=12)
+        )
+        no_images_label.pack(pady=10)
 
 # Setting up the Exp tab
 exp_scroll = ctk.CTkScrollableFrame(master=tab_exp)
@@ -1880,7 +2471,7 @@ threads_start_button = ctk.CTkButton(threads_scroll, text="Start", command=toggl
 threads_start_button.pack(pady=(0, 15))
 
 # =====================================================================
-# OTHERS TAB - UPDATED WITH CHAIN FUNCTIONS
+# OTHERS TAB
 # =====================================================================
 
 # Setting up the Others tab
@@ -2018,7 +2609,7 @@ function_terminate_button = ctk.CTkButton(
 function_terminate_button.pack(pady=(0, 15))
 
 # =====================================================================
-# LAZY-LOADED SETTINGS TAB - UPDATED WITH OFFSET CONTROLS
+# LAZY-LOADED SETTINGS TAB
 # =====================================================================
 
 def load_settings_tab():
@@ -2052,7 +2643,6 @@ def load_settings_tab():
             font=ctk.CTkFont(size=16)
         )
         chk.grid(row=row, column=col, padx=5, pady=2, sticky="w")
-        # Note: checkbox_vars[name] is already set, no need to set it again
 
     # Sinner assignment section (leave as is)
     ctk.CTkLabel(settings_scroll, text="Assign Sinners to Team", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
@@ -2071,23 +2661,25 @@ def load_settings_tab():
             wrapper.grid(row=row_idx, column=0, sticky="nw")
 
             arrow_var = ctk.StringVar(value="▶")
-            full_text = ctk.StringVar(value=f"{arrow_var.get()} {status.capitalize()}")
 
-            def make_toggle(stat=status, arrow=arrow_var):
-                return lambda: toggle_expand(expand_frames[stat], arrow)
+            def make_toggle(stat=status, arrow=arrow_var, button_ref=None):
+                def toggle():
+                    toggle_expand(expand_frames[stat], arrow)
+                    if button_ref:
+                        button_ref.configure(text=f"{arrow.get()} {stat.capitalize()}")
+                return toggle
 
             btn = ctk.CTkButton(
                 master=wrapper,
-                textvariable=full_text,
-                command=make_toggle(),
+                text=f"▶ {status.capitalize()}",
+                command=None,
                 width=200,
                 height=38,
                 font=ctk.CTkFont(size=18),
                 anchor="w"
             )
+            btn.configure(command=make_toggle(status, arrow_var, btn))
             btn.pack(anchor="w", pady=(0, 6))
-
-            arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=status: textvar.set(f"{var.get()} {name.capitalize()}"))
 
             frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
             expand_frames[status] = frame
@@ -2130,255 +2722,6 @@ def load_settings_tab():
                 bind_callback()
                 dropdown_vars[status].append(var)
 
-    # Pack Priority section
-    ctk.CTkLabel(settings_scroll, text="Pack Priority", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
-
-    load_pack_priority()
-    global delayed_pack_priority_data
-    delayed_pack_priority_data = json.loads(json.dumps(pack_priority_data))
-    save_delayed_pack_priority(delayed_pack_priority_data)
-
-    FLOORS = [f"floor{i}" for i in range(1, 6)]
-    floor_labels = [f"Floor {i}" for i in range(1, 6)]
-    # Define columns for packs (3 columns, like STATUS_COLUMNS)
-    PACK_COLUMNS = [["floor1", "floor2"], ["floor3", "floor4"], ["floor5"]]
-    
-    # Define packs for each floor
-    FLOOR_PACKS = {
-        "floor1": ["erosion", "factory", "forgotten", "gamblers", "nagel", "nest", "outcast", "unloving"],
-        "floor2": ["cleaved", "crushed", "erosion", "factory", "gamblers", "hell", "lake", "nest", "pierced", "SEA", "unloving"],
-        "floor3": ["cleaved", "craving", "crushed", "dregs", "flood", "flowers", "indolence", "judgment", "pierced", "repression", "seduction", "subservience", "unconfronting"],
-        "floor4": ["crawling", "envy", "fullstop", "gloom", "gluttony", "lust", "miracle", "noon", "pride", "sloth", "tearful", "time", "violet", "warp", "world", "wrath", "yield"],
-        "floor5": ["crawling", "crushers", "envy", "gloom", "gluttony", "lcb_check", "lust", "nocturnal", "piercers", "pride", "slicers", "sloth", "tearful", "time", "warp", "world", "wrath", "yield"]
-    }
-
-    global pack_dropdown_vars, pack_expand_frames
-    pack_dropdown_vars = {}
-    pack_expand_frames = {}
-
-    pack_container = ctk.CTkFrame(settings_scroll)
-    pack_container.pack()
-
-    for col_idx, group in enumerate(PACK_COLUMNS):
-        col = ctk.CTkFrame(pack_container, fg_color="transparent")
-        col.grid(row=0, column=col_idx, padx=15, sticky="n")
-
-        for row_idx, floor in enumerate(group):
-            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
-            wrapper.grid(row=row_idx, column=0, sticky="nw")
-
-            idx = FLOORS.index(floor)
-            arrow_var = ctk.StringVar(value="▶")
-            full_text = ctk.StringVar(value=f"{arrow_var.get()} {floor_labels[idx]}")
-
-            def make_toggle(f=floor, arrow=arrow_var):
-                return lambda: toggle_expand(pack_expand_frames[f], arrow)
-
-            btn = ctk.CTkButton(
-                master=wrapper,
-                textvariable=full_text,
-                command=make_toggle(),
-                width=200,
-                height=38,
-                font=ctk.CTkFont(size=18),
-                anchor="w"
-            )
-            btn.pack(anchor="w", pady=(0, 6))
-
-            arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=floor_labels[idx]: textvar.set(f"{var.get()} {name}"))
-
-            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
-            pack_expand_frames[floor] = frame
-            frame.pack_forget()
-
-            pack_dropdown_vars[floor] = []
-            default_order = pack_priority_data.get(floor, {})
-            reverse_map = {v: k for k, v in default_order.items()}
-            pack_names = FLOOR_PACKS[floor]
-            max_packs = len(pack_names)
-
-            for i in range(max_packs):
-                rowf = ctk.CTkFrame(master=frame, fg_color="transparent")
-                rowf.pack(pady=1, anchor="w")
-
-                label = ctk.CTkLabel(
-                    master=rowf,
-                    text=f"{i+1}.",
-                    anchor="e",
-                    font=ctk.CTkFont(size=18),
-                    text_color="#b0b0b0",
-                    width=30
-                )
-                label.pack(side="left", padx=(0, 10))
-
-                var = ctk.StringVar()
-                raw_name = reverse_map.get(i + 1)
-                pretty = raw_name if raw_name else "None"
-                var.set(pretty)
-
-                def bind_callback(floor=floor, idx=i, v=var):
-                    v.trace_add("write", lambda *a: pack_dropdown_callback(floor, idx))
-
-                dropdown = ctk.CTkOptionMenu(
-                    master=rowf,
-                    variable=var,
-                    values=pack_names + ["None"],
-                    width=160,
-                    font=ctk.CTkFont(size=16)
-                )
-                dropdown.pack(side="left")
-                bind_callback()
-                pack_dropdown_vars[floor].append(var)
-
-    # Pack Exceptions section
-    ctk.CTkLabel(settings_scroll, text="Pack Exceptions", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="center", pady=(0, 10))
-    
-    # Initialize pack exceptions
-    load_pack_exceptions()
-    global delayed_pack_exceptions_data
-    delayed_pack_exceptions_data = json.loads(json.dumps(pack_exceptions_data))
-    save_delayed_pack_exceptions(delayed_pack_exceptions_data)
-
-    pack_exceptions_container = ctk.CTkFrame(settings_scroll)
-    pack_exceptions_container.pack()
-
-    global pack_exception_expand_frames
-    pack_exception_expand_frames = {}
-
-    for col_idx, group in enumerate(PACK_COLUMNS):
-        col = ctk.CTkFrame(pack_exceptions_container, fg_color="transparent")
-        col.grid(row=0, column=col_idx, padx=15, sticky="n")
-
-        for row_idx, floor in enumerate(group):
-            wrapper = ctk.CTkFrame(master=col, fg_color="transparent")
-            wrapper.grid(row=row_idx, column=0, sticky="nw")
-
-            idx = FLOORS.index(floor)
-            arrow_var = ctk.StringVar(value="▶")
-            full_text = ctk.StringVar(value=f"{arrow_var.get()} {floor_labels[idx]}")
-
-            def make_toggle(f=floor, arrow=arrow_var):
-                return lambda: toggle_expand(pack_exception_expand_frames[f], arrow)
-
-            btn = ctk.CTkButton(
-                master=wrapper,
-                textvariable=full_text,
-                command=make_toggle(),
-                width=200,
-                height=38,
-                font=ctk.CTkFont(size=18),
-                anchor="w"
-            )
-            btn.pack(anchor="w", pady=(0, 6))
-
-            arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text, name=floor_labels[idx]: textvar.set(f"{var.get()} {name}"))
-
-            frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
-            pack_exception_expand_frames[floor] = frame
-            frame.pack_forget()
-
-            # Initialize exception vars for this floor
-            if floor not in pack_exception_vars:
-                pack_exception_vars[floor] = {}
-            if floor not in pack_exceptions_data:
-                pack_exceptions_data[floor] = []
-            
-            # Create exceptions container with single column
-            exceptions_container = ctk.CTkFrame(frame, fg_color="transparent")
-            exceptions_container.pack(anchor="w", padx=20, fill="x")
-            
-            # Create checkboxes in single column - sync with pack_exceptions.json
-            packs = FLOOR_PACKS[floor]
-            for pack in packs:
-                var = ctk.BooleanVar(value=pack in pack_exceptions_data.get(floor, []))
-                def make_toggle_callback(floor=floor, pack=pack, var=var):
-                    return lambda: update_pack_exceptions_from_toggle(floor, pack)
-                cb = ctk.CTkCheckBox(
-                    exceptions_container,
-                    text=pack,
-                    variable=var,
-                    command=make_toggle_callback(),
-                    font=ctk.CTkFont(size=13)
-                )
-                cb.pack(anchor="w", pady=1)
-                pack_exception_vars[floor][pack] = var
-
-    # Fuse Exceptions section
-    ctk.CTkLabel(settings_scroll, text="Fuse Exceptions", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
-    
-    # Initialize fuse exceptions
-    load_fusion_exceptions()
-    
-    # Create fuse exceptions container
-    fuse_exceptions_container = ctk.CTkFrame(settings_scroll)
-    fuse_exceptions_container.pack(pady=(0, 15))
-    
-    # Create fuse exceptions expandable section
-    fuse_images = load_fuse_exception_images()
-    
-    if fuse_images:
-        # Create wrapper for the expandable section
-        wrapper = ctk.CTkFrame(master=fuse_exceptions_container, fg_color="transparent")
-        wrapper.pack(fill="x", padx=10, pady=10)
-        
-        # Create expandable button
-        arrow_var = ctk.StringVar(value="▶")
-        full_text = ctk.StringVar(value=f"{arrow_var.get()} Fuse Exceptions")
-        
-        def make_fuse_toggle():
-            global fuse_exception_expand_frame
-            return lambda: toggle_expand(fuse_exception_expand_frame, arrow_var)
-        
-        btn = ctk.CTkButton(
-            master=wrapper,
-            textvariable=full_text,
-            command=make_fuse_toggle(),
-            width=200,
-            height=38,
-            font=ctk.CTkFont(size=18),
-            anchor="w"
-        )
-        btn.pack(anchor="w", pady=(0, 6))
-        
-        # Update button text when arrow changes
-        arrow_var.trace_add("write", lambda *a, var=arrow_var, textvar=full_text: textvar.set(f"{var.get()} Fuse Exceptions"))
-        
-        # Create the expandable frame (hidden by default)
-        global fuse_exception_expand_frame
-        fuse_exception_expand_frame = ctk.CTkFrame(master=wrapper, fg_color="transparent", corner_radius=0)
-        fuse_exception_expand_frame.pack_forget()  # Start hidden
-        
-        # Create checkboxes container
-        exceptions_container = ctk.CTkFrame(fuse_exception_expand_frame, fg_color="transparent")
-        exceptions_container.pack(anchor="w", padx=20, fill="x")
-        
-        # Create checkboxes for each image
-        for image_path in fuse_images:
-            filename = os.path.basename(image_path)
-            display_name = os.path.splitext(filename)[0]  # Remove extension
-            
-            # Create toggle variable (default OFF, ON if filename in saved exceptions)
-            # Now matches against just the filename without path/extension
-            var = ctk.BooleanVar(value=display_name in fusion_exceptions_data)
-            fuse_exception_vars[image_path] = var
-            
-            # Create checkbox
-            checkbox = ctk.CTkCheckBox(
-                exceptions_container,
-                text=display_name,
-                variable=var,
-                command=update_fuse_exception_from_toggle,
-                font=ctk.CTkFont(size=13)
-            )
-            checkbox.pack(anchor="w", pady=1)
-    else:
-        # Show message if no images found
-        no_images_label = ctk.CTkLabel(
-            fuse_exceptions_container, 
-            text="No images found in pictures/CustomFuse directory", 
-            font=ctk.CTkFont(size=12)
-        )
-        no_images_label.pack(pady=10)
 
     # Display Settings section
     ctk.CTkLabel(settings_scroll, text="Display Settings", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
@@ -2391,7 +2734,7 @@ def load_settings_tab():
         available_monitors = get_available_monitors()
         monitor_options = [monitor['text'] for monitor in available_monitors]
         
-        current_monitor = shared_vars.GAME_MONITOR_INDEX.value
+        current_monitor = shared_vars.game_monitor.value
         if current_monitor <= len(monitor_options):
             default_monitor = monitor_options[current_monitor - 1]
         else:
@@ -2436,34 +2779,39 @@ def load_settings_tab():
     y_offset_entry.pack(side="left", padx=(0, 10))
     y_offset_entry.insert(0, str(shared_vars.y_offset.value))
     
-    # Functions to update offsets
-    def update_x_offset():
-        """Update X offset from entry field"""
-        try:
-            new_value = int(x_offset_entry.get())
-            shared_vars.x_offset.value = new_value
-            save_gui_config()
-            info(f"Updated X offset to: {new_value}")
-        except ValueError:
-            messagebox.showerror("Invalid Input", "X Offset must be a valid number.")
-            x_offset_entry.delete(0, 'end')
-            x_offset_entry.insert(0, str(shared_vars.x_offset.value))
+    # Auto-save timers for offsets
+    offset_timers = {}
     
-    def update_y_offset():
-        """Update Y offset from entry field"""
-        try:
-            new_value = int(y_offset_entry.get())
-            shared_vars.y_offset.value = new_value
-            save_gui_config()
-            info(f"Updated Y offset to: {new_value}")
-        except ValueError:
-            messagebox.showerror("Invalid Input", "Y Offset must be a valid number.")
-            y_offset_entry.delete(0, 'end')
-            y_offset_entry.insert(0, str(shared_vars.y_offset.value))
+    def auto_save_offset(offset_type, entry_widget, shared_var):
+        """Auto-save offset after 1 second delay"""
+        def save_it():
+            try:
+                new_value = int(entry_widget.get())
+                shared_var.value = new_value
+                save_gui_config()
+                info(f"Updated {offset_type} offset to: {new_value}")
+            except ValueError:
+                messagebox.showerror("Invalid Input", f"{offset_type} Offset must be a valid number.")
+                entry_widget.delete(0, 'end')
+                entry_widget.insert(0, str(shared_var.value))
+        
+        # Cancel existing timer for this offset
+        if offset_type in offset_timers:
+            root.after_cancel(offset_timers[offset_type])
+        
+        # Schedule save for 1 second from now
+        offset_timers[offset_type] = root.after(1000, save_it)
     
-    # Bind the entry fields to update functions
-    x_offset_entry.bind('<Return>', lambda e: update_x_offset())
-    y_offset_entry.bind('<Return>', lambda e: update_y_offset())
+    def setup_offset_auto_save(entry, offset_type, shared_var):
+        """Setup auto-save for an offset entry"""
+        def on_key_release(event):
+            auto_save_offset(offset_type, entry, shared_var)
+        entry.bind('<KeyRelease>', on_key_release)
+    
+    # Setup auto-save for offset entries
+    setup_offset_auto_save(x_offset_entry, "X", shared_vars.x_offset)
+    setup_offset_auto_save(y_offset_entry, "Y", shared_vars.y_offset)
+    
     
     # Help text for offsets
     offset_help = ctk.CTkLabel(
@@ -2512,20 +2860,36 @@ def load_settings_tab():
     reconnection_delay_entry.pack(side="left", padx=(0, 10))
     reconnection_delay_entry.insert(0, str(shared_vars.reconnection_delay.value))
     
-    def update_reconnection_delay():
-        try:
-            new_value = int(reconnection_delay_entry.get())
-            if new_value < 1:
-                raise ValueError("Must be at least 1 second")
-            shared_vars.reconnection_delay.value = new_value
-            save_gui_config()
-            info(f"Updated reconnection delay to: {new_value} seconds")
-        except ValueError as e:
-            messagebox.showerror("Invalid Input", f"Reconnection delay must be a valid number (minimum 1): {e}")
-            reconnection_delay_entry.delete(0, 'end')
-            reconnection_delay_entry.insert(0, str(shared_vars.reconnection_delay.value))
+    # Auto-save for reconnection delay
+    reconnection_timer = None
     
-    reconnection_delay_entry.bind('<Return>', lambda e: update_reconnection_delay())
+    def auto_save_reconnection_delay():
+        """Auto-save reconnection delay after 1 second delay"""
+        def save_it():
+            try:
+                new_value = int(reconnection_delay_entry.get())
+                if new_value < 1:
+                    raise ValueError("Must be at least 1 second")
+                shared_vars.reconnection_delay.value = new_value
+                save_gui_config()
+                info(f"Updated reconnection delay to: {new_value} seconds")
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", f"Reconnection delay must be a valid number (minimum 1): {e}")
+                reconnection_delay_entry.delete(0, 'end')
+                reconnection_delay_entry.insert(0, str(shared_vars.reconnection_delay.value))
+        
+        nonlocal reconnection_timer
+        # Cancel existing timer
+        if reconnection_timer:
+            root.after_cancel(reconnection_timer)
+        
+        # Schedule save for 1 second from now
+        reconnection_timer = root.after(1000, save_it)
+    
+    def on_reconnection_key_release(event):
+        auto_save_reconnection_delay()
+    
+    reconnection_delay_entry.bind('<KeyRelease>', on_reconnection_key_release)
 
     # Reconnect only when internet is reachable toggle
     reconnect_internet_var = ctk.BooleanVar(value=shared_vars.reconnect_when_internet_reachable.value)
@@ -2545,17 +2909,6 @@ def load_settings_tab():
     automation_frame = ctk.CTkFrame(settings_scroll)
     automation_frame.pack()
 
-    skip_restshop_var = ctk.BooleanVar(value=shared_vars.skip_restshop.value)
-    def update_skip_restshop():
-        shared_vars.skip_restshop.value = skip_restshop_var.get()
-        save_gui_config()
-    skip_restshop_cb = ctk.CTkCheckBox(
-        automation_frame, 
-        text="Skip Rest Shop in Mirror Dungeon", 
-        variable=skip_restshop_var,
-        command=update_skip_restshop
-    )
-    skip_restshop_cb.pack(anchor="w", padx=10, pady=5)
 
     skip_ego_check_var = ctk.BooleanVar(value=shared_vars.skip_ego_check.value)
     def update_skip_ego_check():
@@ -2569,104 +2922,131 @@ def load_settings_tab():
     )
     skip_ego_check_cb.pack(anchor="w", padx=10, pady=5)
 
-    prioritize_list_var = ctk.BooleanVar(value=shared_vars.prioritize_list_over_status.value)
-    def update_prioritize_list():
-        shared_vars.prioritize_list_over_status.value = prioritize_list_var.get()
+
+    good_pc_mode_var = ctk.BooleanVar(value=shared_vars.good_pc_mode.value)
+    def update_good_pc_mode():
+        shared_vars.good_pc_mode.value = good_pc_mode_var.get()
         save_gui_config()
-    prioritize_list_cb = ctk.CTkCheckBox(
+    good_pc_mode_cb = ctk.CTkCheckBox(
         automation_frame, 
-        text="Prioritize Pack List Over Status Gifts", 
-        variable=prioritize_list_var,
-        command=update_prioritize_list
+        text="I have a good pc", 
+        variable=good_pc_mode_var,
+        command=update_good_pc_mode
     )
-    prioritize_list_cb.pack(anchor="w", padx=10, pady=5)
+    good_pc_mode_cb.pack(anchor="w", padx=10, pady=5)
 
     # Keyboard shortcut configuration section
     ctk.CTkLabel(settings_scroll, text="Keyboard Shortcuts", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
     shortcuts_frame = ctk.CTkFrame(settings_scroll)
     shortcuts_frame.pack()
 
-    def update_shortcut(shortcut_type):
-        """Update and apply a keyboard shortcut"""
-        try:
-            # Try to register the shortcuts to see if they're valid
-            test_key = keyboard.add_hotkey(shortcut_vars[shortcut_type].get(), lambda: None)
-            keyboard.remove_hotkey(test_key)
-            
-            # Save configuration
-            save_gui_config()
-            # Re-register all shortcuts
-            register_keyboard_shortcuts()
-            info(f"Updated {shortcut_type} shortcut to: {shortcut_vars[shortcut_type].get()}")
-            
-        except Exception as e:
-            error(f"Invalid shortcut format: {e}")
-            # Reset to previous value
-            shortcut_vars[shortcut_type].set(config['Shortcuts'].get(shortcut_type))
-            messagebox.showerror("Invalid Shortcut", f"Invalid shortcut format: {shortcut_vars[shortcut_type].get()}\n\nValid examples: ctrl+q, alt+s, shift+x")
+    # Auto-save timers for shortcuts
+    shortcut_timers = {}
+    shortcut_entries = {}
+    
+    def auto_save_shortcut(shortcut_type):
+        """Auto-save shortcut after 1 second delay"""
+        def save_it():
+            try:
+                # Get text from the entry widget and update the StringVar
+                shortcut_text = shortcut_entries[shortcut_type].get()
+                if not shortcut_text or shortcut_text.strip() == "":
+                    return
+                
+                # Update the StringVar to keep it in sync
+                shortcut_vars[shortcut_type].set(shortcut_text)
+                
+                # Save configuration
+                save_gui_config()
+                # Re-register all shortcuts (with throttling)
+                register_keyboard_shortcuts()
+                info(f"Updated {shortcut_type} shortcut to: {shortcut_text}")
+                
+            except Exception as e:
+                error(f"Invalid shortcut format: {e}")
+                # Reset to previous value
+                old_value = config['Shortcuts'].get(shortcut_type)
+                shortcut_vars[shortcut_type].set(old_value)
+                shortcut_entries[shortcut_type].delete(0, 'end')
+                shortcut_entries[shortcut_type].insert(0, old_value)
+                messagebox.showerror("Invalid Shortcut", f"Invalid shortcut format: {shortcut_text}\n\nValid examples: ctrl+q, alt+s, shift+x")
+        
+        # Cancel existing timer for this shortcut
+        if shortcut_type in shortcut_timers:
+            root.after_cancel(shortcut_timers[shortcut_type])
+        
+        # Schedule save for 1 second from now
+        shortcut_timers[shortcut_type] = root.after(1000, save_it)
+    
+    def setup_auto_save(entry, shortcut_type):
+        """Setup auto-save for a shortcut entry"""
+        shortcut_entries[shortcut_type] = entry
+        def on_key_release(event):
+            auto_save_shortcut(shortcut_type)
+        entry.bind('<KeyRelease>', on_key_release)
 
     # Mirror Dungeon shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Mirror Dungeon:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    md_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['mirror_dungeon'], width=100)
+    md_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     md_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('mirror_dungeon')).pack(side="left")
+    md_shortcut_entry.insert(0, shortcut_vars['mirror_dungeon'].get())
+    setup_auto_save(md_shortcut_entry, 'mirror_dungeon')
 
     # Exp shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Exp:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    exp_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['exp'], width=100)
+    exp_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     exp_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('exp')).pack(side="left")
+    exp_shortcut_entry.insert(0, shortcut_vars['exp'].get())
+    setup_auto_save(exp_shortcut_entry, 'exp')
 
     # Threads shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Threads:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    threads_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['threads'], width=100)
+    threads_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     threads_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('threads')).pack(side="left")
+    threads_shortcut_entry.insert(0, shortcut_vars['threads'].get())
+    setup_auto_save(threads_shortcut_entry, 'threads')
 
     # Start Battle shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Start Battle:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    battle_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['battle'], width=100)
+    battle_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     battle_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('battle')).pack(side="left")
+    battle_shortcut_entry.insert(0, shortcut_vars['battle'].get())
+    setup_auto_save(battle_shortcut_entry, 'battle')
 
     # Chain Automation shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Chain Automation:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    chain_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['chain_automation'], width=100)
+    chain_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     chain_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('chain_automation')).pack(side="left")
+    chain_shortcut_entry.insert(0, shortcut_vars['chain_automation'].get())
+    setup_auto_save(chain_shortcut_entry, 'chain_automation')
 
     # Call Function shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Call Function:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    call_function_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['call_function'], width=100)
+    call_function_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     call_function_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('call_function')).pack(side="left")
+    call_function_shortcut_entry.insert(0, shortcut_vars['call_function'].get())
+    setup_auto_save(call_function_shortcut_entry, 'call_function')
 
     # Terminate Functions shortcut
     shortcut_row = ctk.CTkFrame(shortcuts_frame)
     shortcut_row.pack(fill="x", pady=5)
     ctk.CTkLabel(shortcut_row, text="Terminate Functions:", width=120, anchor="e").pack(side="left", padx=(10, 10))
-    terminate_shortcut_entry = ctk.CTkEntry(shortcut_row, textvariable=shortcut_vars['terminate_functions'], width=100)
+    terminate_shortcut_entry = ctk.CTkEntry(shortcut_row, width=100)
     terminate_shortcut_entry.pack(side="left", padx=(0, 10))
-    ctk.CTkButton(shortcut_row, text="Apply", width=60, 
-                  command=lambda: update_shortcut('terminate_functions')).pack(side="left")
+    terminate_shortcut_entry.insert(0, shortcut_vars['terminate_functions'].get())
+    setup_auto_save(terminate_shortcut_entry, 'terminate_functions')
 
     # Help text for keyboard shortcuts
     shortcut_help = ctk.CTkLabel(shortcuts_frame, text="Format examples: ctrl+q, alt+s, shift+x", 
@@ -2772,7 +3152,7 @@ def load_settings_tab():
     settings_tab_loaded = True
 
 # =====================================================================
-# RESPONSIVE LOGS TAB - FIXED FOR SCALING
+# RESPONSIVE LOGS TAB
 # =====================================================================
 
 def load_logs_tab():
@@ -2785,7 +3165,6 @@ def load_logs_tab():
     logs_main_frame = ctk.CTkFrame(tab_logs)
     logs_main_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-    # FIXED: Create responsive filter controls that scale with window size
     filter_container = ctk.CTkScrollableFrame(logs_main_frame, height=120)
     filter_container.pack(fill="x", padx=5, pady=(0, 5))
 
@@ -2796,16 +3175,18 @@ def load_logs_tab():
     ctk.CTkLabel(filter_header, text="Log Filters", 
                 font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", padx=10)
 
-    # Clean logs toggle
-    filter_toggle = ctk.CTkSwitch(
-        master=filter_header,
-        text="Clean Logs",
-        variable=ctk.BooleanVar(value=filtered_messages_enabled),
-        command=lambda: toggle_filtered_messages(),
-        onvalue=True,
-        offvalue=False
-    )
-    filter_toggle.pack(side="right", padx=10)
+    # ONE frame for both toggles - using grid for precise control
+    toggles = ctk.CTkFrame(filter_header, fg_color="transparent")
+    toggles.pack(side="right", padx=10)
+    
+    # Grid layout - everything in one row, close together
+    ctk.CTkLabel(toggles, text="Clean Logs").grid(row=0, column=0, padx=(0,2), sticky="e")
+    filter_toggle = ctk.CTkSwitch(toggles, text="", variable=ctk.BooleanVar(value=filtered_messages_enabled), command=lambda: toggle_filtered_messages(), onvalue=True, offvalue=False)
+    filter_toggle.grid(row=0, column=1, padx=(0,10))
+    
+    ctk.CTkLabel(toggles, text="Do Not Log").grid(row=0, column=2, padx=(0,2), sticky="e") 
+    logging_toggle = ctk.CTkSwitch(toggles, text="", variable=ctk.BooleanVar(value=not logging_enabled), command=lambda: toggle_logging(), onvalue=True, offvalue=False)
+    logging_toggle.grid(row=0, column=3, padx=0)
 
     def toggle_filtered_messages():
         """Toggle filtering of noisy messages"""
@@ -2814,8 +3195,29 @@ def load_logs_tab():
         common.CLEAN_LOGS_ENABLED = filtered_messages_enabled
         save_gui_config()
         load_log_file(reload_all=True)  # Reload logs with new filter setting
+    
+    def toggle_logging():
+        """Toggle all logging on/off"""
+        global logging_enabled
+        logging_enabled = not logging_toggle.get()  # Inverted because "Do Not Log" means disable
+        
+        # Update the async logger
+        try:
+            if hasattr(common, 'set_logging_enabled'):
+                common.set_logging_enabled(logging_enabled)
+        except (AttributeError, NameError):
+            # Fallback if async logging not available
+            pass
+        
+        save_gui_config()
+        
+        # Update log display to show current status
+        if logging_enabled:
+            log_text.insert("end", f"\n[{get_timestamp()}] LOGGING ENABLED\n")
+        else:
+            log_text.insert("end", f"\n[{get_timestamp()}] LOGGING DISABLED - No new logs will be generated\n")
+        log_text.see("end")
 
-    # FIXED: Responsive filter grid that wraps properly
     filters_main_frame = ctk.CTkFrame(filter_container)
     filters_main_frame.pack(fill="x", expand=True, padx=5, pady=5)
 
@@ -2848,14 +3250,12 @@ def load_logs_tab():
         col = i // 3
         chk.grid(row=row, column=col, sticky="w", padx=2, pady=1)
 
-    # Module filters section - FIXED: More responsive layout
     modules_frame = ctk.CTkFrame(filters_main_frame)
     modules_frame.pack(side="left", fill="both", expand=True, padx=(2, 5))
     
     ctk.CTkLabel(modules_frame, text="Modules:", 
                 font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(5, 0))
 
-    # FIXED: Scrollable frame for modules that adapts to window size
     module_scroll_frame = ctk.CTkScrollableFrame(modules_frame, height=60)
     module_scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -2890,21 +3290,21 @@ def load_logs_tab():
     def should_display_line(line):
         """Check if the line should be displayed based on filters"""
         # Check log level filters
-        if " - DEBUG - " in line and not log_filters["DEBUG"].get():
+        if " | DEBUG | " in line and not log_filters["DEBUG"].get():
             return False
-        elif " - INFO - " in line and not log_filters["INFO"].get():
+        elif " | INFO | " in line and not log_filters["INFO"].get():
             return False
-        elif " - WARNING - " in line and not log_filters["WARNING"].get():
+        elif " | WARNING | " in line and not log_filters["WARNING"].get():
             return False
-        elif " - ERROR - " in line and not log_filters["ERROR"].get():
+        elif " | ERROR | " in line and not log_filters["ERROR"].get():
             return False
-        elif " - CRITICAL - " in line and not log_filters["CRITICAL"].get():
+        elif " | CRITICAL | " in line and not log_filters["CRITICAL"].get():
             return False
         
         # Check module filters
         module_found = False
         for module, pattern in LOG_MODULES.items():
-            if f" - {pattern} - " in line:
+            if f" | {pattern} | " in line:
                 module_found = True
                 if not module_filters[module].get():
                     return False
@@ -2914,16 +3314,9 @@ def load_logs_tab():
             if not module_filters["Other"].get():
                 return False
         
-        # Filter out noisy messages
-        if common.CLEAN_LOGS_ENABLED:
-            # Skip if message contains any filtered text
-            for filtered_msg in FILTERED_MESSAGES:
-                if filtered_msg in line:
-                    return False
-                
-            # Skip pre-checked statuses logs
-            if re.search(r"Loaded pre-checked statuses: .+", line):
-                return False
+        # Filter dirty logs when clean logs is enabled
+        if " | DIRTY" in line and common.CLEAN_LOGS_ENABLED:
+            return False
         
         return True
     
@@ -2960,7 +3353,9 @@ def load_logs_tab():
                     for line in new_lines:
                         # Apply filters to the line
                         if should_display_line(line):
-                            log_text.insert("end", line)
+                            # Format line with time ago
+                            formatted_line = format_log_line_with_time_ago(line)
+                            log_text.insert("end", formatted_line)
                     
                     # Scroll to end to show new content
                     log_text.see("end")
@@ -2968,7 +3363,6 @@ def load_logs_tab():
         except Exception as e:
             error(f"Error loading log file: {e}")
 
-    # Control buttons - FIXED: Responsive button layout
     button_frame = ctk.CTkFrame(logs_main_frame)
     button_frame.pack(fill="x", padx=5, pady=(0, 5))
 
@@ -3028,18 +3422,33 @@ def load_logs_tab():
     root_logger = logging.getLogger()
     root_logger.addHandler(log_handler)
 
-    # Auto-reload function that just clicks the reload button
-    def auto_reload_logs():
-        """Automatically reload logs when the logs tab is active"""
-        if logs_tab_loaded and tabs.get() == "Logs" and auto_reload_var.get():
-            load_log_file(reload_all=False)  # Only load new content
-        
-        # Schedule next reload
-        root.after(500, auto_reload_logs)
+    # File monitoring for real-time log updates
+    last_modified_time = 0
     
-    # Load initial content and start auto-reload
+    def check_log_file_changes():
+        """Check if log file has been modified and reload if needed"""
+        nonlocal last_modified_time
+        
+        if logs_tab_loaded and tabs.get() == "Logs" and auto_reload_var.get():
+            try:
+                if os.path.exists(LOG_FILENAME):
+                    current_modified_time = os.path.getmtime(LOG_FILENAME)
+                    if current_modified_time != last_modified_time:
+                        last_modified_time = current_modified_time
+                        load_log_file(reload_all=False)
+            except Exception:
+                pass
+        
+        # Check again in 10ms for instant updates
+        root.after(10, check_log_file_changes)
+    
+    # Initialize last modified time and start monitoring
+    if os.path.exists(LOG_FILENAME):
+        last_modified_time = os.path.getmtime(LOG_FILENAME)
+    
+    # Load initial content and start monitoring
     load_log_file(reload_all=True)
-    auto_reload_logs()
+    check_log_file_changes()
 
     logs_tab_loaded = True
 
@@ -3071,7 +3480,6 @@ except Exception as e:
 discord_button = ctk.CTkButton(help_scroll, text="Join my Discord", command=join_discord)
 discord_button.pack(pady=10)
 
-# FIXED: Handle theme restart - load Settings tab if needed
 if load_settings_on_startup:
     tabs.set("Settings")
     # Manually trigger the Settings tab loading since set() doesn't trigger the callback
@@ -3079,6 +3487,9 @@ if load_settings_on_startup:
 
 # Register keyboard shortcuts based on config values
 register_keyboard_shortcuts()
+
+# Start the dedicated keyboard handler thread
+keyboard_handler.start()
 
 # ===============================================
 # PROCESS MONITORING AND APPLICATION MANAGEMENT
@@ -3138,11 +3549,10 @@ def check_processes():
     root.after(1000, check_processes)
 
 def on_closing():
-    """Handle application exit cleanup - OPTIMIZED VERSION"""
+    """Handle application exit cleanup"""
     try:
         info("Application closing")
         
-        # OPTIMIZATION: Only kill processes if user wants us to
         if kill_processes_var.get():
             try:
                 # Kill multiprocessing processes
@@ -3166,20 +3576,22 @@ def on_closing():
             except Exception as e:
                 error(f"Error killing processes: {e}")
         
-        # OPTIMIZATION: Clean up threads quickly
+            try:
+                if 'log_handler' in globals() and log_handler:
+                    log_handler.close()
+            except Exception:
+                pass  # Ignore cleanup errors
+        
         try:
-            if 'log_handler' in globals() and log_handler:
-                log_handler.close()
+            keyboard_handler.stop()
         except Exception:
             pass  # Ignore cleanup errors
         
-        # OPTIMIZATION: No config saving - settings are saved in real-time
-        
+            
     except Exception as e:
         error(f"Error during application close: {e}")
     finally:
-        # OPTIMIZATION: Fast exit
-        os._exit(0)
+            os._exit(0)
 
 # Set the callback for window close
 root.protocol("WM_DELETE_WINDOW", on_closing)
@@ -3190,12 +3602,11 @@ root.protocol("WM_DELETE_WINDOW", on_closing)
 
 if __name__ == "__main__":
     def start_application():
-        """Initialize the application after GUI is loaded - OPTIMIZED VERSION"""
+        """Initialize the application after GUI is loaded"""
         try:
             # Load checkbox data at startup (before any automation can run)
             load_checkbox_data()
             
-            # OPTIMIZATION: Only start process monitoring, don't load logs yet
             check_processes()
             
             # MOVED: Check for updates if enabled (MUST work without Settings tab loaded)
@@ -3224,7 +3635,17 @@ if __name__ == "__main__":
     # Make sure "all data" folder exists in the correct location
     os.makedirs(BASE_PATH, exist_ok=True)
     
-    # OPTIMIZATION: Shorter delay for faster startup
+    # Initialize common module settings after GUI is ready
+    def delayed_common_init():
+        try:
+            init_common_settings()
+            monitor_index = shared_vars.game_monitor.value
+            common.set_game_monitor(monitor_index)
+        except Exception as e:
+            error(f"Error initializing common module: {e}")
+    
     root.after(5, start_application)
+    # Initialize common settings after startup
+    root.after(100, delayed_common_init)
     
     root.mainloop()

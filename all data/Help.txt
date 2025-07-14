@@ -1,4 +1,4 @@
-hello!
+helloo!
 just walk through the tabs and read and you'll understand most of the stuff
 and here's a guide for things that I think would be harder to grasp:
 
@@ -25,27 +25,32 @@ assign sinner to name section:
 so here you just pick whatever sinner you want to be chosen and in which order on which team,
 so if you do 1: Ishmael and 2: rodion on burn and 1: rodion 2: Ishmael on rupture then it will apply Ishmael first if you chosen burn and rodion first if you chosen rupture as your team
 
-pack priority and exceptions:
-basically what packs to prioritize over which on respective floors, and what are hard exceptions, if something is in both priority and exceptions then exceptions will win/it will not be chosen.
+pack priority:
+basically what packs to prioritize over which on respective floors
 
 prioritize pack list over status gifts:
-basically whatever pack priority you chose for the respective floor will be prioritized first, it will try to find from that list first and if it cant then it will use a pack with same status.
-
-Misc:
-Debug image matches: draws rectangles around the images it finds
-Hard mode: toggles on hard mode in mirror dungeon
-convert images to grayscale: makes all the images it scans gray before scanning, this way it dont have to process rgb values, significantly increasing speed
-delay between reconnection attempts: if your wifi stops working a while like 1-2 minutes or smth and limbus company throws network error then there will be 2 options
-(close game) and (retry connection), but if you retry thrice without success then it forces you to close the game, whatever number you put here is the amount of time to wait between retrying
-reconnect only when internet is reachable: ignores the delay between retry attempts and clicks retry when internet starts working
+basically whatever pack priority you chose for the respective floor will be prioritized first, instead of current implementation where it picks one with your status it will try to find from that list first and if it cant then it will use a pack with same status.
 
 mouse offsets:
 use this if you have a weird aspect ratio monitor, tinker it by yourself so that everything is clicking at the right area.
 y = up/down, x = left/right, positive value = down/right, negative value = up/left
 
+Misc:
+Debug image matches: draws rectangles around the images it finds (bugged, i think?)
+
+convert images to grayscale: makes all the images it scans gray before scanning, this way it dont have to process rgb values, significantly increasing speed
+
+delay between reconnection attempts: if your wifi stops working a while like 1-2 minutes or smth and limbus company throws network error then there will be 2 options
+(close game) and (retry connection), but if you retry thrice without success then it forces you to close the game, whatever number you put here is the amount of time to wait between retrying
+
+reconnect only when internet is reachable: ignores the delay between retry attempts and clicks retry when internet starts working
+
+automation settings:
+i have a good pc: when toggled off will add some delays to work with potato pc with slow ui changes currently only modifies battle() and ego_check()
+
 graphics:
 make sure to be in fullscreen (alt+enter) ingame
-the modifications were built in max graphics
+the macro was built in max graphics
 you can try lower graphics and it might still work depending on how much did you lower it, but if anything is not working correctly then just do max graphics.
 
 chain functions section:

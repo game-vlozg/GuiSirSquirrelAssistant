@@ -3,6 +3,7 @@ import sys
 
 # Determine if running as executable or script
 def get_base_path():
+    """Get the base directory path"""
     if getattr(sys, 'frozen', False):
         # Running as compiled exe
         return os.path.dirname(sys.executable)
@@ -18,6 +19,7 @@ def get_base_path():
 BASE_PATH = get_base_path()
 
 def gift_choice(status):
+    """Get gift image path for status"""
     match status:
         case "sinking":
             return "pictures/mirror/gifts/sinking.png"
@@ -41,6 +43,7 @@ def gift_choice(status):
             return "pictures/mirror/gifts/blunt.png"
     
 def squad_choice(status):
+    """Get squad image path for status"""
     match status:
         case "sinking":
             return "pictures/CustomAdded1080p/general/squads/sinking.png"
@@ -63,7 +66,8 @@ def squad_choice(status):
         case "blunt":
             return "pictures/CustomAdded1080p/general/squads/blunt.png"     
 
-def pack_choice(status):   
+def pack_choice(status):
+    """Get pack image path for status"""   
     match status:
         case "sinking":
             return "pictures/mirror/packs/status/sinking_pack.png"
@@ -123,6 +127,7 @@ def get_status_gift_template(status):
 enhance_gift_choice = get_status_gift_template
         
 def reward_choice(status):
+    """Get reward image path for status"""
     match status:
         case "sinking":
             return "pictures/mirror/rewards/sinking_reward.png"
@@ -146,6 +151,7 @@ def reward_choice(status):
             return "pictures/mirror/rewards/blunt_reward.png"
     
 def market_choice(status):
+    """Get market image path for status"""
     match status:
         case "sinking":
             return "pictures/mirror/restshop/market/sinking_market.png"
@@ -205,6 +211,7 @@ def get_fusion_target_button(status):
 fusion_choice = get_fusion_target_button
         
 def enhance_shift(status):
+    """Get coordinate shift values for enhancement checking"""
     match status:
         case "sinking":
             return (11,-35)

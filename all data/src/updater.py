@@ -25,11 +25,10 @@ EXCLUDED_PATHS = [
 ]
 
 class Updater:
-    """Class for checking and applying updates from a GitHub repository"""
     
     def __init__(self, repo_owner, repo_name, current_version_file="version.json", 
                  backup_folder="backups", temp_folder="_temp", api_url=None):
-        """Initialize the updater with repository information"""
+        """Initialize updater with repository info and file paths"""
         self.repo_owner = repo_owner
         self.repo_name = repo_name
         self.current_version_file = current_version_file
@@ -87,7 +86,6 @@ class Updater:
         logger.info(f"Temp path: {self.temp_path}")
         
     def get_current_version(self):
-        """Get the current version from the local version file"""
         try:
             if os.path.exists(self.version_file_path):
                 with open(self.version_file_path, 'r') as f:
@@ -99,7 +97,6 @@ class Updater:
             return 'v0'
             
     def get_latest_version(self):
-        """Check the GitHub API for the latest version from version.json file"""
         try:
             # First try to get the latest release
             release_url = f"{self.api_url}/releases/latest"
@@ -144,7 +141,6 @@ class Updater:
             return None, None
     
     def check_for_updates(self):
-        """Check if updates are available"""
         current_version = self.get_current_version()
         latest_version, download_url = self.get_latest_version()
         
@@ -170,7 +166,6 @@ class Updater:
             return False, latest_clean, None
 
     def should_exclude(self, file_path, dest_file_path=None):
-        """Check if a file should be excluded from updates"""
         # Convert to Unix-style path for consistent matching
         normalized_path = file_path.replace("\\", "/")
         
@@ -214,7 +209,6 @@ class Updater:
         return False
     
     def download_update(self, download_url):
-        """Download the update file"""
         # Clear temp directory if it exists (but don't recreate it)
         try:
             # Just clear contents of temp directory without removing it
@@ -246,10 +240,6 @@ class Updater:
             return None
     
     def modify_backup_config(self, backup_dir):
-        """
-        Modify the backup's config to disable auto-update, preventing update loops.
-        This only modifies the BACKUP config, not the current/real config
-        """
         # Possible locations for gui_config.json in the backup
         possible_config_paths = [
             os.path.join(backup_dir, "all data", "config", "gui_config.json"),
@@ -314,7 +304,6 @@ class Updater:
             return False
     
     def backup_current_version(self):
-        """Create a backup of the current version"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_name = f"backup_{timestamp}"
         backup_dir = os.path.join(self.backup_path, backup_name)
@@ -390,7 +379,6 @@ class Updater:
             return None
     
     def apply_update(self, zip_path):
-        """Extract and apply the update"""
         if not zip_path or not os.path.exists(zip_path):
             logger.error("Invalid zip file path")
             return False
@@ -426,7 +414,6 @@ class Updater:
             return False
     
     def _copy_directory_with_exclusions(self, src_dir, dest_dir):
-        """Recursively copy a directory while respecting exclusions"""
         # Create the destination directory if it doesn't exist
         os.makedirs(dest_dir, exist_ok=True)
         
@@ -488,7 +475,6 @@ class Updater:
         logger.info(f"Update copied {file_count} files")
     
     def _handle_deleted_files(self, extracted_repo_dir):
-        """Remove files that have been deleted in the repository"""
         # Get list of all files in the extracted repository (excluding excluded paths)
         repo_files = set()
         for root, dirs, files in os.walk(extracted_repo_dir):
@@ -588,7 +574,6 @@ class Updater:
                     logger.debug(f"Could not remove directory {rel_dir_path}: {e}")
     
     def update_version_file(self, version):
-        """Update the version file with the new version information"""
         try:
             with open(self.version_file_path, 'w') as f:
                 f.write(version)
@@ -600,7 +585,6 @@ class Updater:
             return False
     
     def clean_temp_files(self):
-        """Clean up temporary files"""
         if os.path.exists(self.temp_path):
             try:
                 # Instead of removing the directory, just clean its contents
@@ -615,7 +599,6 @@ class Updater:
                 logger.error(f"Error cleaning up temporary files: {e}")
     
     def restart_application(self):
-        """Restart the application"""
         try:
             logger.info("Restarting application")
             
@@ -680,7 +663,6 @@ except Exception as e:
             return False
     
     def perform_update(self, create_backup=True, auto_restart=True):
-        """Perform the complete update process"""
         # SAFETY: Always create backup regardless of parameter (for safety)
         # If create_backup is True, we'll keep the backup
         # If create_backup is False, we'll delete it after successful update
@@ -732,7 +714,6 @@ except Exception as e:
         return True, f"Successfully updated to {latest_version}"
     
     def check_and_update_async(self, callback=None, create_backup=True, auto_restart=True):
-        """Check for updates and apply them asynchronously"""
         def update_thread():
             result, message = self.perform_update(create_backup, auto_restart)
             if callback:
@@ -745,17 +726,6 @@ except Exception as e:
 
 # Helper function to run the updater
 def check_for_updates(repo_owner, repo_name, callback=None):
-    """
-    Check for updates and notify if available
-    
-    Args:
-        repo_owner (str): GitHub repository owner
-        repo_name (str): GitHub repository name
-        callback (function): Callback function to call with (success, message, is_update_available)
-    
-    Returns:
-        bool: True if update is available, False otherwise
-    """
     try:
         updater = Updater(repo_owner, repo_name)
         update_available, version, download_url = updater.check_for_updates()
@@ -779,18 +749,6 @@ def check_for_updates(repo_owner, repo_name, callback=None):
         return False
 
 def auto_update(repo_owner, repo_name, create_backup=True, callback=None):
-    """
-    Automatically update the application
-    
-    Args:
-        repo_owner (str): GitHub repository owner
-        repo_name (str): GitHub repository name
-        create_backup (bool): Whether to create a backup before updating
-        callback (function): Callback function to call with (success, message)
-    
-    Returns:
-        threading.Thread: The thread performing the update
-    """
     try:
         updater = Updater(repo_owner, repo_name)
         return updater.check_and_update_async(callback, create_backup)
@@ -804,7 +762,8 @@ if __name__ == "__main__":
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+        datefmt='%d/%m/%Y %H:%M:%S'
     )
     
     # Example usage

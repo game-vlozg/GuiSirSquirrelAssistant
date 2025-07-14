@@ -11,6 +11,7 @@ import os
 
 # Determine if running as executable or script
 def get_base_path():
+    """Get the base directory path"""
     if getattr(sys, 'frozen', False):
         # Running as compiled exe
         return os.path.dirname(sys.executable)
@@ -25,15 +26,11 @@ def get_base_path():
 # Get base path for resource access
 BASE_PATH = get_base_path()
 
-# Setting up basic logging configuration
-LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILENAME)
-    ]
-)
+# Add src to path and import common for DirtyLogger
+sys.path.append(os.path.join(BASE_PATH, 'src'))
+import common
+
+# Logging configuration is handled by common.py
 logger = logging.getLogger(__name__)
 
 # Lock for synchronized access to shared resources
@@ -45,6 +42,7 @@ running = True
 
 # Set up signal handlers for clean termination
 def signal_handler(sig, frame):
+    """Handle shutdown signals gracefully"""
     global running
     running = False
     sys.exit(0)
@@ -92,7 +90,7 @@ def parse_function_call(function_string):
             try:
                 args = [eval(arg.strip()) for arg in args_str.split(',') if arg.strip()]
             except Exception as e:
-                logger.error(f"Failed to parse arguments: {e}")
+                    logger.error(f"Failed to parse arguments: {e}")
     
     return module_name, function_name, args
 

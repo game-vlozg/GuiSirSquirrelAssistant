@@ -11,6 +11,7 @@ import signal
 import threading
 
 def get_base_path():
+    """Get the base directory path"""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     else:
@@ -22,22 +23,16 @@ sys.path.append(BASE_PATH)
 sys.path.append(os.path.join(BASE_PATH, 'src'))
 
 import luxcavation_functions
+import common
 
-# Setting up basic logging configuration
-LOG_FILENAME = os.path.join(BASE_PATH, "Pro_Peepol's.log")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILENAME)
-    ]
-)
+# Logging configuration is handled by common.py
 logger = logging.getLogger(__name__)
 
 class ConnectionManager:
     """Manages connection checking and reconnection"""
     
     def __init__(self):
+        """Initialize connection manager"""
         self.connection_event = threading.Event()
         self.connection_event.set()  # Start with connection assumed good
     
@@ -52,7 +47,7 @@ class ConnectionManager:
         
         while True:
             try:
-                if element_exist("pictures/general/connection.png"):
+                if element_exist("pictures/general/connection.png", quiet_failure=True):
                     self.connection_event.clear()
                 else:
                     self.connection_event.set()
@@ -126,7 +121,7 @@ def main(runs, stage, shared_vars=None):
                         # Handle case where common module isn't available
                         pass
                     except Exception as e:
-                        logger.error(f"Error checking for server error: {e}")
+                                logger.error(f"Error checking for server error: {e}")
                         
             except Exception as e:
                 logger.error(f"Error during Exp run {i+1}: {e}")
