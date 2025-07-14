@@ -112,6 +112,8 @@ class SharedVars:
         self.reconnection_delay = Value('i', 6)
         self.reconnect_when_internet_reachable = Value('b', False)
         self.good_pc_mode = Value('b', True)
+        self.click_delay = Value('f', 0.5)
+        self.threshold_adjustment = Value('f', 0.0)
 
 # Define python interpreter path based on whether we're frozen or not
 def get_python_command():
@@ -676,7 +678,9 @@ def load_gui_config():
         'hard_mode': False,
         'convert_images_to_grayscale': True,
         'reconnection_delay': 6,
-        'reconnect_when_internet_reachable': True
+        'reconnect_when_internet_reachable': True,
+        'click_delay': 0.5,
+        'threshold_adjustment': 0.0
     }
     
     # Default log filter values
@@ -817,6 +821,8 @@ def save_gui_config(config=None):
                 'reconnection_delay': int(shared_vars.reconnection_delay.value) if 'shared_vars' in globals() else 6,
                 'reconnect_when_internet_reachable': bool(shared_vars.reconnect_when_internet_reachable.value) if 'shared_vars' in globals() else False,
                 'good_pc_mode': bool(shared_vars.good_pc_mode.value) if 'shared_vars' in globals() else True,
+                'click_delay': float(shared_vars.click_delay.value) if 'shared_vars' in globals() else 0.5,
+                'threshold_adjustment': float(shared_vars.threshold_adjustment.value) if 'shared_vars' in globals() else 0.0,
             }
         except Exception as e:
             pass
@@ -2903,6 +2909,84 @@ def load_settings_tab():
         command=update_reconnect_internet
     )
     reconnect_internet_checkbox.pack(anchor="w", padx=10, pady=5)
+
+    # Click delay setting
+    click_delay_row = ctk.CTkFrame(misc_frame)
+    click_delay_row.pack(pady=5, fill="x")
+    
+    ctk.CTkLabel(click_delay_row, text="Delay Between Operations:", width=200, anchor="w", font=ctk.CTkFont(size=14)).pack(side="left", padx=(10, 10))
+    click_delay_entry = ctk.CTkEntry(click_delay_row, width=80, font=ctk.CTkFont(size=14))
+    click_delay_entry.pack(side="left", padx=(0, 10))
+    click_delay_entry.insert(0, str(shared_vars.click_delay.value))
+    
+    # Auto-save for click delay
+    click_delay_timer = None
+    
+    def auto_save_click_delay():
+        """Auto-save click delay after 1 second delay"""
+        def save_it():
+            try:
+                new_value = float(click_delay_entry.get())
+                if new_value < 0:
+                    raise ValueError("Must be 0 or greater")
+                shared_vars.click_delay.value = new_value
+                save_gui_config()
+                info(f"Updated click delay to: {new_value} seconds")
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", f"Click delay must be a valid number (0 or greater): {e}")
+                click_delay_entry.delete(0, 'end')
+                click_delay_entry.insert(0, str(shared_vars.click_delay.value))
+        
+        nonlocal click_delay_timer
+        # Cancel existing timer
+        if click_delay_timer:
+            root.after_cancel(click_delay_timer)
+        
+        # Schedule save for 1 second from now
+        click_delay_timer = root.after(1000, save_it)
+    
+    def on_click_delay_key_release(event):
+        auto_save_click_delay()
+    
+    click_delay_entry.bind('<KeyRelease>', on_click_delay_key_release)
+
+    # Threshold adjustment setting
+    threshold_adjustment_row = ctk.CTkFrame(misc_frame)
+    threshold_adjustment_row.pack(pady=5, fill="x")
+    
+    ctk.CTkLabel(threshold_adjustment_row, text="Threshold Offset:", width=200, anchor="w", font=ctk.CTkFont(size=14)).pack(side="left", padx=(10, 10))
+    threshold_adjustment_entry = ctk.CTkEntry(threshold_adjustment_row, width=80, font=ctk.CTkFont(size=14))
+    threshold_adjustment_entry.pack(side="left", padx=(0, 10))
+    threshold_adjustment_entry.insert(0, str(shared_vars.threshold_adjustment.value))
+    
+    # Auto-save for threshold adjustment
+    threshold_adjustment_timer = None
+    
+    def auto_save_threshold_adjustment():
+        """Auto-save threshold adjustment after 1 second delay"""
+        def save_it():
+            try:
+                new_value = float(threshold_adjustment_entry.get())
+                shared_vars.threshold_adjustment.value = new_value
+                save_gui_config()
+                info(f"Updated threshold adjustment to: {new_value}")
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", f"Threshold adjustment must be a valid number: {e}")
+                threshold_adjustment_entry.delete(0, 'end')
+                threshold_adjustment_entry.insert(0, str(shared_vars.threshold_adjustment.value))
+        
+        nonlocal threshold_adjustment_timer
+        # Cancel existing timer
+        if threshold_adjustment_timer:
+            root.after_cancel(threshold_adjustment_timer)
+        
+        # Schedule save for 1 second from now
+        threshold_adjustment_timer = root.after(1000, save_it)
+    
+    def on_threshold_adjustment_key_release(event):
+        auto_save_threshold_adjustment()
+    
+    threshold_adjustment_entry.bind('<KeyRelease>', on_threshold_adjustment_key_release)
 
     # skip automations
     ctk.CTkLabel(settings_scroll, text="Automation Settings:", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))

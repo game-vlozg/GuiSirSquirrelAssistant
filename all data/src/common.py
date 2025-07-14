@@ -424,6 +424,10 @@ def _base_match_template(template_path, threshold=0.8, grayscale=False,no_graysc
     if scale_factor < 0.75:
         threshold = threshold - 0.05
     
+    # Apply threshold adjustment from user configuration
+    adjustment = shared_vars.threshold_adjustment.value if hasattr(shared_vars.threshold_adjustment, 'value') else shared_vars.threshold_adjustment
+    threshold = threshold + adjustment
+    
     locations = np.where(result >= threshold)
     boxes = []
     
@@ -807,7 +811,9 @@ def click_matching(image_path, threshold=0.8, area="center", mousegoto200=False,
         x, y = found[0]
         logger.debug(f"Found and clicking element at ({x}, {y}): {image_path}", dirty=True)
         mouse_move_click(x, y)
-        time.sleep(0.5)
+        # Handle both multiprocessing.Value and plain float
+        delay = shared_vars.click_delay.value if hasattr(shared_vars.click_delay, 'value') else shared_vars.click_delay
+        time.sleep(delay)
         return True
     elif recursive:
         logger.debug(f"Element not found, retrying: {image_path}", dirty=True)

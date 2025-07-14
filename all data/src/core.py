@@ -56,8 +56,9 @@ def navigate_to_md():
        if common.element_exist("pictures/mirror/general/md_enter.png"):
             return
        else:
-           common.mouse_move(common.scale_coordinates_1080p(200, 200))
-           return
+           common.mouse_move(*common.scale_coordinates_1080p(200, 200))
+           if common.click_matching("pictures/CustomAdded1080p/mirror/general/button_to_md_tab.png", recursive=False):
+                return
 
     while not common.element_exist("pictures/general/MD.png"):
         while common.click_matching("pictures/CustomAdded1080p/general/goback.png", recursive=False):
@@ -131,6 +132,7 @@ def battle():
             battle_finished = 1
             logger.info(f"Battle finished!")
             return
+        
         if common.element_exist("pictures/events/skip.png"): #Checks for special battle skill checks prompt then calls skill check functions
             logger.debug("Skip button found, handling skill check")
             common.mouse_up()
@@ -144,6 +146,8 @@ def battle():
                     logger.debug("Skill check event detected")
                     skill_check()
                     break
+
+                common.click_matching("pictures/events/continue.png", recursive=False)
                     
         if common.element_exist("pictures/battle/winrate.png"):
             logger.debug("Winrate screen detected")
@@ -251,6 +255,7 @@ def ego_check():
     return
     
 def battle_check():
+
     """Handle special battle events and skill checks"""
     common.sleep(1)
     if common.click_matching("pictures/battle/investigate.png", recursive=False):
@@ -259,7 +264,6 @@ def battle_check():
         
     elif common.click_matching("pictures/battle/NO.png", recursive=False):
         for i in range(2):
-            common.click_matching("pictures/battle/NO.png")
             common.mouse_move_click(*common.scale_coordinates_1440p(1193, 623))
             while(not common.element_exist("pictures/events/proceed.png")):
                 if common.click_matching("pictures/events/continue.png", recursive=False):

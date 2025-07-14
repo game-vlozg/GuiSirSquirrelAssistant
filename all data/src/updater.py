@@ -18,10 +18,23 @@ logger = logging.getLogger("updater")
 
 # Define exclusions - files/directories that should never be updated
 EXCLUDED_PATHS = [
-    "config/",     # All user settings/configurations  
     "backups/",    # Backup directory
     "_temp/",      # Temporary files
     "*.log"        # Any log files (including Pro_Peepol's.log)
+]
+
+# Config files that need smart merging (user settings preserved + new defaults added)
+CONFIG_MERGE_FILES = [
+    "config/gui_config.json",
+    "config/pack_priority.json",
+    "config/delayed_pack_priority.json", 
+    "config/pack_exceptions.json",
+    "config/delayed_pack_exceptions.json",
+    "config/squad_order.json",
+    "config/delayed_squad_order.json",
+    "config/status_selection.json",
+    "config/fusion_exceptions.json",
+    "config/grace_selection.json"
 ]
 
 class Updater:
@@ -169,22 +182,7 @@ class Updater:
         # Convert to Unix-style path for consistent matching
         normalized_path = file_path.replace("\\", "/")
         
-        # Special handling for config directory: allow new files, protect existing ones
-        if normalized_path.startswith("all data/config/") or normalized_path == "all data/config":
-            # If this is a directory, exclude it
-            if normalized_path == "all data/config":
-                return True
-            
-            # If we have a destination path, check if the file already exists locally
-            if dest_file_path and os.path.exists(dest_file_path):
-                # File exists locally - exclude it to protect user settings
-                logger.info(f"Protecting existing config file: {normalized_path}")
-                return True
-            else:
-                # File doesn't exist locally - allow it (new config file)
-                if dest_file_path:  # Only log when we have a destination (actual file operation)
-                    logger.info(f"Adding new config file: {normalized_path}")
-                return False
+        # Config files are now handled by config merging system, no special exclusion needed
             
         # Explicitly exclude backup and temp folders
         if normalized_path.startswith(f"{self.backup_folder}/") or normalized_path == self.backup_folder:
@@ -379,6 +377,10 @@ class Updater:
             return None
     
     def apply_update(self, zip_path):
+        # Check if this is a staged self-update
+        if self._is_staged_update():
+            return self._perform_staged_update()
+            
         if not zip_path or not os.path.exists(zip_path):
             logger.error("Invalid zip file path")
             return False
@@ -400,12 +402,25 @@ class Updater:
             repo_dir = os.path.join(self.temp_path, subdirs[0])
             logger.info(f"Found repository directory: {repo_dir}")
             
+            # Special case: if we're updating the updater itself, stage the update
+            updater_path = os.path.join(repo_dir, "all data", "src", "updater.py")
+            if os.path.exists(updater_path):
+                logger.info("Updater.py update detected - staging self-update")
+                return self._stage_self_update(repo_dir)
+            
+            # Handle config merging BEFORE copying files
+            temp_config_backup = self.handle_config_merging(repo_dir)
+            
             # Now copy files to the PARENT directory, NOT just all_data
             # This is the key change - we're updating the parent directory structure
             self._copy_directory_with_exclusions(repo_dir, self.parent_dir)
             
             # Handle deleted files in the parent directory
             self._handle_deleted_files(repo_dir)
+            
+            # Merge user settings back into newly installed configs
+            if temp_config_backup:
+                self.merge_configs_from_temp(temp_config_backup)
             
             logger.info("Update applied successfully")
             return True
@@ -573,6 +588,121 @@ class Updater:
                     # Directory not empty or other error
                     logger.debug(f"Could not remove directory {rel_dir_path}: {e}")
     
+    def handle_config_merging(self, repo_dir):
+        """
+        Handle smart config merging:
+        1. Backup user configs to temp
+        2. Allow new configs to be installed 
+        3. Merge user settings back into new configs
+        4. Auto-cleanup temp configs
+        """
+        logger.info("Starting config merging process")
+        
+        # Create temp config backup directory
+        temp_config_backup = os.path.join(self.temp_path, "config_backup")
+        os.makedirs(temp_config_backup, exist_ok=True)
+        
+        try:
+            # Step 1: Backup existing user configs to temp
+            config_dir = os.path.join(self.all_data_dir, "config")
+            if os.path.exists(config_dir):
+                for config_file in CONFIG_MERGE_FILES:
+                    config_filename = os.path.basename(config_file)
+                    user_config_path = os.path.join(config_dir, config_filename)
+                    backup_config_path = os.path.join(temp_config_backup, config_filename)
+                    
+                    if os.path.exists(user_config_path):
+                        shutil.copy2(user_config_path, backup_config_path)
+                        logger.info(f"Backed up user config: {config_filename}")
+            
+            # Step 2: Allow new configs to be installed (handled by normal copy process)
+            logger.info("User configs backed up to temp, allowing new configs to install")
+            
+            # Return temp backup path for later merging
+            return temp_config_backup
+            
+        except Exception as e:
+            logger.error(f"Error during config backup: {e}")
+            return None
+    
+    def merge_configs_from_temp(self, temp_config_backup):
+        """
+        Merge user settings from temp backup into newly installed configs
+        """
+        logger.info("Merging user settings into new configs")
+        
+        try:
+            config_dir = os.path.join(self.all_data_dir, "config")
+            
+            for config_file in CONFIG_MERGE_FILES:
+                config_filename = os.path.basename(config_file)
+                user_backup_path = os.path.join(temp_config_backup, config_filename)
+                current_config_path = os.path.join(config_dir, config_filename)
+                
+                if os.path.exists(user_backup_path) and os.path.exists(current_config_path):
+                    self._merge_single_config(user_backup_path, current_config_path)
+                    logger.info(f"Merged config: {config_filename}")
+                elif os.path.exists(user_backup_path):
+                    # New config doesn't exist, keep user config
+                    shutil.copy2(user_backup_path, current_config_path)
+                    logger.info(f"Restored user config (no new version): {config_filename}")
+            
+            # Step 3: Auto-cleanup temp configs
+            shutil.rmtree(temp_config_backup, ignore_errors=True)
+            logger.info("Config merging completed, temp files cleaned up")
+            
+        except Exception as e:
+            logger.error(f"Error during config merging: {e}")
+    
+    def _merge_single_config(self, user_config_path, new_config_path):
+        """
+        Merge a single config file: user values take priority, new keys get added
+        """
+        try:
+            # Load user config (backup)
+            with open(user_config_path, 'r') as f:
+                user_config = json.load(f)
+        except:
+            logger.warning(f"Failed to load user config: {user_config_path}")
+            return
+        
+        try:
+            # Load new default config
+            with open(new_config_path, 'r') as f:
+                new_config = json.load(f)
+        except:
+            logger.warning(f"Failed to load new config: {new_config_path}")
+            # Keep user config if new config is invalid
+            shutil.copy2(user_config_path, new_config_path)
+            return
+        
+        # Deep merge: user values override defaults, new keys from defaults are added
+        merged_config = self._deep_merge_configs(new_config, user_config)
+        
+        # Save merged config
+        with open(new_config_path, 'w') as f:
+            json.dump(merged_config, f, indent=2)
+        
+        logger.debug(f"Successfully merged: {os.path.basename(new_config_path)}")
+    
+    def _deep_merge_configs(self, default_config, user_config):
+        """
+        Deep merge configs - user values override defaults, new keys from default are added
+        """
+        if isinstance(default_config, dict) and isinstance(user_config, dict):
+            result = default_config.copy()
+            for key, value in user_config.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    # Recursively merge nested dictionaries
+                    result[key] = self._deep_merge_configs(result[key], value)
+                else:
+                    # User value takes precedence
+                    result[key] = value
+            return result
+        else:
+            # Non-dict values: user takes precedence
+            return user_config if user_config is not None else default_config
+
     def update_version_file(self, version):
         try:
             with open(self.version_file_path, 'w') as f:
@@ -723,6 +853,102 @@ except Exception as e:
         thread.daemon = True
         thread.start()
         return thread
+
+    def _is_staged_update(self):
+        """Check if this updater instance is running as a staged self-update"""
+        return len(sys.argv) > 1 and sys.argv[1] == "--staged-update"
+
+    def _stage_self_update(self, repo_dir):
+        """Stage a self-update by extracting new updater to temp and calling it"""
+        try:
+            # Create temp directory for staged updater
+            temp_updater_dir = os.path.join(self.temp_path, "staged_updater")
+            os.makedirs(temp_updater_dir, exist_ok=True)
+            
+            # Copy new updater to temp
+            new_updater_path = os.path.join(repo_dir, "all data", "src", "updater.py")
+            staged_updater_path = os.path.join(temp_updater_dir, "updater.py")
+            shutil.copy2(new_updater_path, staged_updater_path)
+            
+            # Copy other necessary files (like logger if needed)
+            logger_src = os.path.join(repo_dir, "all data", "src", "logger.py")
+            if os.path.exists(logger_src):
+                shutil.copy2(logger_src, os.path.join(temp_updater_dir, "logger.py"))
+            
+            logger.info(f"Staged updater prepared at {staged_updater_path}")
+            
+            # Call staged updater with special flag and paths
+            cmd = [
+                sys.executable, staged_updater_path,
+                "--staged-update",
+                repo_dir,  # Source path with new files
+                self.parent_dir,  # Target installation directory
+                self.temp_path  # Temp directory for cleanup
+            ]
+            
+            logger.info("Launching staged self-update...")
+            logger.info(f"Command: {' '.join(cmd)}")
+            
+            # Launch staged updater and exit current process
+            subprocess.Popen(cmd, cwd=temp_updater_dir)
+            logger.info("Staged updater launched. Current process will exit.")
+            
+            # Exit current process to allow staged updater to update us
+            sys.exit(0)
+            
+        except Exception as e:
+            logger.error(f"Error staging self-update: {e}")
+            return False
+
+    def _perform_staged_update(self):
+        """Perform the actual staged update when running as staged updater"""
+        try:
+            if len(sys.argv) < 4:
+                logger.error("Staged update missing required arguments")
+                return False
+                
+            repo_dir = sys.argv[2]
+            target_dir = sys.argv[3]
+            temp_cleanup_dir = sys.argv[4] if len(sys.argv) > 4 else None
+            
+            logger.info("=== PERFORMING STAGED SELF-UPDATE ===")
+            logger.info(f"Source: {repo_dir}")
+            logger.info(f"Target: {target_dir}")
+            
+            # Brief delay to ensure original process has fully exited
+            time.sleep(1)
+            
+            # Initialize updater with target directory as parent
+            self.parent_dir = target_dir
+            self.all_data_dir = os.path.join(target_dir, "all data")
+            
+            # Handle config merging BEFORE copying files
+            temp_config_backup = self.handle_config_merging(repo_dir)
+            
+            # Copy all files from repo to target
+            self._copy_directory_with_exclusions(repo_dir, target_dir)
+            
+            # Handle deleted files
+            self._handle_deleted_files(repo_dir)
+            
+            # Merge user settings back into newly installed configs
+            if temp_config_backup:
+                self.merge_configs_from_temp(temp_config_backup)
+            
+            # Clean up temp directories
+            if temp_cleanup_dir and os.path.exists(temp_cleanup_dir):
+                try:
+                    shutil.rmtree(temp_cleanup_dir)
+                    logger.info(f"Cleaned up temp directory: {temp_cleanup_dir}")
+                except Exception as e:
+                    logger.warning(f"Could not clean up temp directory: {e}")
+            
+            logger.info("Staged self-update completed successfully!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error performing staged update: {e}")
+            return False
 
 # Helper function to run the updater
 def check_for_updates(repo_owner, repo_name, callback=None):

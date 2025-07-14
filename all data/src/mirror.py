@@ -244,10 +244,9 @@ class Mirror:
         status = mirror_utils.squad_choice(self.status)
         if status is None:
             common.key_press("enter")
-            common.click_matching("pictures/CustomAdded1080p/general/confirm.png", recursive=False)
             self.status = "poise"
             while(not common.element_exist("pictures/CustomAdded1080p/mirror/general/grace_menu.png")): #added check for default state
-                common.sleep(0.5) #Transitional to Grace of Dreams
+                common.click_matching("pictures/CustomAdded1080p/general/confirm.png", recursive=False)
             return
         #This is to bring us to the first entry of teams
         found = common.match_image("pictures/CustomAdded1080p/general/squads/squad_select.png")
@@ -271,10 +270,8 @@ class Mirror:
                     common.click_matching(status)
                     break
         common.key_press("enter")
-        common.click_matching("pictures/CustomAdded1080p/general/confirm.png", recursive=False)
-        common.sleep(1)
         while(not common.element_exist("pictures/CustomAdded1080p/mirror/general/grace_menu.png")):
-            common.sleep(0.5) #Transitional to Grace of Dreams
+            common.click_matching("pictures/CustomAdded1080p/general/confirm.png", recursive=False)
 
     def pack_selection(self):
         """Prioritises the status gifts for packs if not follows a list"""
@@ -390,7 +387,7 @@ class Mirror:
             found = [x for x in found if x[1] > common.scale_y(1092)] #Removes poor detections
         owned_found = common.ifexist_match("pictures/mirror/packs/status/owned.png", 0.9)
         if owned_found:
-            owned_check = common.proximity_check(found,owned_found,50)
+            owned_check = common.proximity_check(found,owned_found,common.scale_x_1080p(50))
             if owned_check:
                 if len(found) > len(owned_check):
                     for i in owned_check:
@@ -469,6 +466,8 @@ class Mirror:
         
         if ego_gift_count == 3:
             found = common.match_image(status_effect,0.85)
+            if not found:
+                found = ego_gift_matches
             x,y = common.random_choice(found)
             common.mouse_move_click(x, y)
         else:
@@ -564,7 +563,7 @@ class Mirror:
  #Combat detected nodes
             combat_nodes = [x for x in combat_nodes if x[0] > common.scale_x(1280) and x[0] < common.scale_x(1601)]
  #filter only for next nodes
-            combat_nodes_locs = common.proximity_check_fuse(node_location, combat_nodes,100, common.scale_y(200))
+            combat_nodes_locs = common.proximity_check_fuse(node_location, combat_nodes,common.scale_x(100), common.scale_y(200))
             node_location = [i for i in node_location if i not in list(combat_nodes_locs)]
             node_location = node_location + list(combat_nodes_locs)
 
@@ -766,7 +765,7 @@ class Mirror:
                     common.mouse_scroll(-1000)
                 common.sleep(0.5)
                 fusion_gifts_scroll = self.find_gifts(statuses)
-                duplicates = common.proximity_check_fuse(fusion_gifts_scroll,fusion_gifts,10,common.scale_y(348))
+                duplicates = common.proximity_check_fuse(fusion_gifts_scroll,fusion_gifts,common.scale_x(10),common.scale_y(348))
                 for i in duplicates:
                     fusion_gifts_scroll.remove(i)
                 if (len(fusion_gifts_scroll) + click_count) >= 3:
@@ -791,7 +790,12 @@ class Mirror:
         """Handle rest shop activities: fusion, healing, enhancement, and buying"""
         def leave_restshop():
             """Leave the restshop with proper confirmation handling"""
-            common.click_matching("pictures/mirror/restshop/leave.png")
+            common.mouse_move_click(*common.scale_coordinates_1080p(50,50))
+            while not common.click_matching("pictures/mirror/restshop/leave.png", recursive=False):
+                common.key_press("esc")
+                for _ in range(5):
+                    common.mouse_move_click(*common.scale_coordinates_1080p(50,50))
+
             if not common.element_exist("pictures/general/confirm_w.png"):
                 common.mouse_move_click(*common.scale_coordinates_1080p(50,50))
                 common.click_matching("pictures/mirror/restshop/leave.png")
@@ -909,10 +913,14 @@ class Mirror:
                 # Find all fully_upgraded coordinates once, then filter gifts using those coordinates
                 fully_upgraded_coords = common.ifexist_match("pictures/CustomAdded1080p/mirror/general/fully_upgraded.png", 0.7, x1=x1, y1=y1, x2=x2, y2=y2)
                 if fully_upgraded_coords:
-                    # Use enhanced_proximity_check with fixed area mode (30px right and 30px above each gift)
-                    gifts = [gift for gift in gifts if not common.enhanced_proximity_check([gift], 
-                                                                                         fully_upgraded_coords, 
-                                                                                         expand_right=30, expand_above=30,
+                    # Scale 100px expansion values from 1080p base to current resolution
+                    expand_left_scaled = common.scale_x_1080p(100)
+                    expand_below_scaled = common.scale_y_1080p(100)
+                    # Use enhanced_proximity_check with fully_upgraded as center, filter out gifts within expanded areas
+                    gifts = [gift for gift in gifts if not common.enhanced_proximity_check(fully_upgraded_coords,
+                                                                                         [gift], 
+                                                                                         expand_left=expand_left_scaled, 
+                                                                                         expand_below=expand_below_scaled,
                                                                                          use_bounding_box=False, return_bool=True)]
                 if len(gifts):
                     self.upgrade(gifts,status,shift_x,shift_y)
