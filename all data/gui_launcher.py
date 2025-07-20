@@ -1,4 +1,3 @@
-from importlib.resources import Anchor
 import customtkinter as ctk
 import subprocess
 import signal
