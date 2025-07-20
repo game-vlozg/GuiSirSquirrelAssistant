@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import urllib.request
 import urllib.error
 import zipfile
@@ -19,7 +20,7 @@ logger = logging.getLogger("updater")
 # Define exclusions - files/directories that should never be updated
 EXCLUDED_PATHS = [
     "backups/",    # Backup directory
-    "_temp/",      # Temporary files
+    "temp/",      # Temporary files
     "*.log"        # Any log files (including Pro_Peepol's.log)
 ]
 
@@ -40,7 +41,7 @@ CONFIG_MERGE_FILES = [
 class Updater:
     
     def __init__(self, repo_owner, repo_name, current_version_file="version.json", 
-                 backup_folder="backups", temp_folder="_temp", api_url=None):
+                 backup_folder="backups", temp_folder="temp", api_url=None):
         """Initialize updater with repository info and file paths"""
         self.repo_owner = repo_owner
         self.repo_name = repo_name
@@ -92,11 +93,6 @@ class Updater:
         os.makedirs(self.backup_path, exist_ok=True)
         os.makedirs(self.temp_path, exist_ok=True)
         
-        logger.info(f"Updater initialized for {repo_owner}/{repo_name}")
-        logger.info(f"Parent directory: {self.parent_dir}")
-        logger.info(f"All data directory: {self.all_data_dir}")
-        logger.info(f"Backup path: {self.backup_path}")
-        logger.info(f"Temp path: {self.temp_path}")
         
     def get_current_version(self):
         try:
@@ -131,7 +127,6 @@ class Updater:
                 with urllib.request.urlopen(version_file_url) as response:
                     if response.getcode() == 200:
                         repo_version = response.read().decode().strip()
-                        logger.info(f"Repository version.json content: '{repo_version}'")
                         if repo_version:
                             # Use the zipball URL for the main branch
                             download_url = f"{self.api_url}/zipball/main"
@@ -166,16 +161,12 @@ class Updater:
         latest_clean = latest_version.strip() if latest_version else ""
         
         # Debug logging
-        logger.info(f"Current version: '{current_clean}' (length: {len(current_clean)})")
-        logger.info(f"Latest version: '{latest_clean}' (length: {len(latest_clean)})")
-        logger.info(f"Versions equal: {current_clean == latest_clean}")
             
         # Check if we need to update (simple string comparison)
         if current_clean != latest_clean:
             logger.info(f"Update available: {current_clean} -> {latest_clean}")
             return True, latest_clean, download_url
         else:
-            logger.info(f"Already up to date: {current_clean}")
             return False, latest_clean, None
 
     def should_exclude(self, file_path, dest_file_path=None):
@@ -786,7 +777,7 @@ except Exception as e:
             
             # Exit the current process
             logger.info("New process started, exiting current process")
-            os._exit(0)
+            sys.exit(0)
             
         except Exception as e:
             logger.error(f"Error restarting application: {e}")

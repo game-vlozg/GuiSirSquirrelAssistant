@@ -135,18 +135,17 @@ def mirror_dungeon_run(num_runs, status_list_file, connection_manager, shared_va
             
         # Create status list for runs
         status_list = (status_list_file * ((num_runs // len(status_list_file)) + 1))[:num_runs]
-        logger.info(f"Starting Run with statuses: {status_list}")
+        unique_statuses = list(dict.fromkeys(status_list_file))
+        logger.info(f"Starting Run with statuses: {unique_statuses}")
         
         for i in range(num_runs):
             logger.info(f"Run {run_count + 1}")
             
             try:
+                run_complete = 0
+                MD = mirror.Mirror(status_list[i])
+                logger.info(f"Current Team: " + status_list[i])
                 if pre_md_setup():
-
-                    logger.info(f"Current Team: " + status_list[i])
-                    run_complete = 0
-                    
-                    MD = mirror.Mirror(status_list[i])
                     
                     MD.setup_mirror()
                 

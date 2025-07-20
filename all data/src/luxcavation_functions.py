@@ -33,31 +33,35 @@ BASE_PATH = get_base_path()
 # Logging configuration is handled by common.py
 logger = logging.getLogger(__name__)
 
-# Read status and create Mirror instance globally
-status = "poise"  # Default fallback
-
-try:
-    # Use cached config instead of file I/O
-    data = shared_vars.ConfigCache.get_config("status_selection")
-    if data:
-        # Handle numbered priority format: {"1": "burn", "2": "poise"}
-        if all(key.isdigit() for key in data.keys()):
-            # Sort by number and extract values in priority order
-            sorted_items = sorted(data.items(), key=lambda x: int(x[0]))
-            statuses = [item[1] for item in sorted_items]
-        else:
-            # Fallback to old format: {"selected_statuses": [...]}
-            statuses = data.get("selected_statuses", [])
-        if statuses:
-            status = statuses[0].strip().lower()
-    
-    m = mirror.Mirror(status)
-    logger.info(f"Initialized Mirror with status: {status}")
-except Exception as e:
-    logger.error(f"Error initializing Mirror with status file: {e}")
+# Function to create Mirror instance based on config type
+def get_mirror_instance(config_type="status_selection"):
+    """Get Mirror instance for specific config type"""
     status = "poise"  # Default fallback
-    m = mirror.Mirror(status)
-    logger.info(f"Initialized Mirror with default status: {status}")
+    
+    try:
+        # Use cached config instead of file I/O
+        data = shared_vars.ConfigCache.get_config(config_type)
+        if data:
+            # Handle numbered priority format: {"1": "burn", "2": "poise"}
+            if all(key.isdigit() for key in data.keys()):
+                # Sort by number and extract values in priority order
+                sorted_items = sorted(data.items(), key=lambda x: int(x[0]))
+                statuses = [item[1] for item in sorted_items]
+            else:
+                # Fallback to old format: {"selected_statuses": [...]}
+                statuses = data.get("selected_statuses", [])
+            if statuses:
+                status = statuses[0].strip().lower()
+        
+        mirror_instance = mirror.Mirror(status)
+        logger.info(f"Initialized Mirror with {config_type} status: {status}")
+        return mirror_instance
+    except Exception as e:
+        logger.error(f"Error initializing Mirror with {config_type}: {e}")
+        return mirror.Mirror("poise")  # Default fallback
+
+# Create default mirror instance for backwards compatibility (mirror dungeon)
+m = get_mirror_instance("status_selection")
 
 screen_width, screen_height = common.get_resolution()
 logger.debug(f"Screen dimensions: {screen_width}x{screen_height}")
@@ -159,9 +163,8 @@ def click_continue():
 def squad_select_lux(mirror_instance, SelectTeam=False):
     """Handle squad selection for luxcavation battles"""
     
-    global status
     if SelectTeam:
-        status = mirror_utils.squad_choice(status)
+        status = mirror_utils.squad_choice(mirror_instance.status)
         if status is None:
             status = "poise"
         else:
@@ -224,20 +227,21 @@ def navigate_to_lux():
         
     common.click_matching("pictures/CustomAdded1080p/luxcavation/luxcavation.png")
 
-def pre_exp_setup(Stage, SelectTeam=False):
+def pre_exp_setup(Stage, SelectTeam=False, config_type="exp_team_selection"):
     """Setup for EXP farming run"""
-    logger.info(f"Starting EXP farming setup for stage: {Stage}")
+    logger.info(f"Starting EXP farming setup for stage: {Stage} with config: {config_type}")
     core.refill_enkephalin()
-    navigate_to_exp(Stage, SelectTeam)
+    navigate_to_exp(Stage, SelectTeam, config_type)
 
-def pre_threads_setup(Difficulty, SelectTeam=False):
+def pre_threads_setup(Difficulty, SelectTeam=False, config_type="threads_team_selection"):
     """Setup for thread farming run"""
+    logger.info(f"Starting Thread farming setup for difficulty: {Difficulty} with config: {config_type}")
     core.refill_enkephalin()
-    navigate_to_threads(Difficulty, SelectTeam)
+    navigate_to_threads(Difficulty, SelectTeam, config_type)
 
-def navigate_to_exp(Stage, SelectTeam=False):
+def navigate_to_exp(Stage, SelectTeam=False, config_type="exp_team_selection"):
     """Navigate to and start specific EXP stage"""
-    logger.info(f"Navigating to EXP stage: {Stage}")
+    logger.info(f"Navigating to EXP stage: {Stage} with config: {config_type}")
     
     already_on_lux_screen = common.element_exist("pictures/CustomAdded1080p/luxcavation/luxcavation_brown.png")
     
@@ -288,7 +292,7 @@ def navigate_to_exp(Stage, SelectTeam=False):
             return
 
         common.click_matching("pictures/CustomAdded1080p/general/goback.png")
-        navigate_to_exp(Stage, SelectTeam)
+        navigate_to_exp(Stage, SelectTeam, config_type)
         return
     
     logger.debug(f"Click successful, waiting for UI to settle...")
@@ -296,18 +300,20 @@ def navigate_to_exp(Stage, SelectTeam=False):
     
     if common.element_exist("pictures/CustomAdded1080p/general/squads/squad_select.png"):
         logger.info(f"Squad select screen detected")
-        squad_select_lux(m, SelectTeam)
+        # Get mirror instance for this config type
+        mirror_instance = get_mirror_instance(config_type)
+        squad_select_lux(mirror_instance, SelectTeam)
         common.key_press(Key="esc", presses=2)
     else:
         logger.warning(f"Squad select screen not detected, retrying")
         common.key_press(Key="esc", presses=2)
         time.sleep(1)
         common.key_press(Key="esc", presses=2)
-        navigate_to_exp(Stage, SelectTeam)
+        navigate_to_exp(Stage, SelectTeam, config_type)
         return
     
 
-def navigate_to_threads(Difficulty, SelectTeam=False):
+def navigate_to_threads(Difficulty, SelectTeam=False, config_type="threads_team_selection"):
     """Navigate to and start specific thread difficulty"""
     
     if Difficulty != "latest" and Difficulty not in [20, 30, 40, 50]:
@@ -324,7 +330,7 @@ def navigate_to_threads(Difficulty, SelectTeam=False):
     
     if not common.element_exist("pictures/CustomAdded1080p/luxcavation/thread/enter.png"):
         logger.warning("Enter button not found")
-        navigate_to_threads(Difficulty)
+        navigate_to_threads(Difficulty, SelectTeam, config_type)
         return
         
     # Use pre-calculated thread select coordinates
@@ -361,12 +367,14 @@ def navigate_to_threads(Difficulty, SelectTeam=False):
         
     if common.element_exist("pictures/CustomAdded1080p/general/squads/squad_select.png"):
         logger.info(f"Squad select screen detected")
-        squad_select_lux(m, SelectTeam)
+        # Get mirror instance for this config type
+        mirror_instance = get_mirror_instance(config_type)
+        squad_select_lux(mirror_instance, SelectTeam)
         common.key_press(Key="esc", presses=2)
     else:
         logger.warning(f"Squad select screen not detected, retrying")
         common.key_press(Key="esc", presses=2)
         time.sleep(1)
         common.key_press(Key="esc", presses=2)
-        navigate_to_threads(Difficulty, SelectTeam)
+        navigate_to_threads(Difficulty, SelectTeam, config_type)
         return

@@ -96,7 +96,7 @@ def main(runs, stage, shared_vars=None):
         connection_manager = ConnectionManager()
         connection_manager.start_connection_monitor()
        
-        luxcavation_functions.pre_exp_setup(stage, SelectTeam=True)
+        luxcavation_functions.pre_exp_setup(stage, SelectTeam=True, config_type="exp_team_selection")
         runs = runs - 1
         for i in range(runs):
            
@@ -106,7 +106,7 @@ def main(runs, stage, shared_vars=None):
                 while True:
                     if connection_manager.connection_event.is_set():
                         # Connection is good, proceed with run
-                        luxcavation_functions.pre_exp_setup(stage)
+                        luxcavation_functions.pre_exp_setup(stage, config_type="exp_team_selection")
                         break
                     else:
                         # Connection lost, wait for it to be restored

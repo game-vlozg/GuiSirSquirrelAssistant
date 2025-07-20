@@ -75,6 +75,7 @@ class ConfigCache:
         """Preload common config files into cache for performance"""
         config_files = [
             "squad_order", "delayed_squad_order", "status_selection", 
+            "exp_team_selection", "threads_team_selection",
             "gui_config", "pack_priority", "delayed_pack_priority",
             "pack_exceptions", "delayed_pack_exceptions", "fusion_exceptions",
             "grace_selection"
@@ -84,6 +85,9 @@ class ConfigCache:
                 if config_name not in _config_cache:
                     ConfigCache._load_config(config_name)
         logger.info(f"Preloaded {len(config_files)} config files")
+        
+        # Load image threshold configuration
+        ConfigCache._load_config("image_thresholds")
 
 class ScaledCoordinates:
     
@@ -285,3 +289,6 @@ try:
 except (ImportError, AttributeError):
     # common module might not be available during early import, will load on first use
     logger.debug("Deferred coordinate preloading - common module not yet available")
+
+# Load image threshold configuration
+image_threshold_config = ConfigCache.get_config("image_thresholds")

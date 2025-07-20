@@ -205,6 +205,9 @@ def mouse_move(x, y):
 
 def mouse_click():
     """Performs a left click on the current position"""
+    caller_info = _get_caller_info()
+    current_pos = pyautogui.position()
+    logger.debug(f"Mouse click at ({current_pos.x}, {current_pos.y}) - {caller_info}", dirty=True)
     pyautogui.click()
 
 def mouse_hold():
@@ -221,13 +224,18 @@ def mouse_up():
     """Release mouse button"""
     pyautogui.mouseUp()
 
-def mouse_move_click(x, y):
+def mouse_move_click(x, y, log_click=True):
     """Moves the mouse to the X,Y coordinate specified and performs a left click"""
+    if log_click:
+        caller_info = _get_caller_info()
+        logger.debug(f"Mouse move and click to ({x}, {y}) - {caller_info}", dirty=True)
     mouse_move(x, y)
-    mouse_click()
+    pyautogui.click()
 
 def mouse_drag(x, y, seconds=1):
     """Drag from current position to the specified coords on the game monitor"""
+    caller_info = _get_caller_info()
+    logger.debug(f"Mouse drag to ({x}, {y}) over {seconds}s - {caller_info}", dirty=True)
     real_x, real_y = get_MonCords(x, y)
     pyautogui.dragTo(real_x, real_y, seconds, button='left')
 
@@ -425,8 +433,8 @@ def _base_match_template(template_path, threshold=0.8, grayscale=False,no_graysc
         threshold = threshold - 0.05
     
     # Apply threshold adjustment from user configuration
-    adjustment = shared_vars.threshold_adjustment.value if hasattr(shared_vars.threshold_adjustment, 'value') else shared_vars.threshold_adjustment
-    threshold = threshold + adjustment
+    total_adjustment = get_total_threshold_adjustment(template_path)
+    threshold = threshold + total_adjustment
     
     locations = np.where(result >= threshold)
     boxes = []
@@ -507,12 +515,38 @@ def _base_match_template(template_path, threshold=0.8, grayscale=False,no_graysc
     
     return _extract_coordinates(filtered_boxes, area, crop_offset_x, crop_offset_y)
 
-def match_image(template_path, threshold=0.8, area="center", grayscale=False, no_grayscale=False, debug=False, quiet_failure=False, x1=None, y1=None, x2=None, y2=None):
+def get_total_threshold_adjustment(template_path):
+    """Get combined threshold adjustment based on global and path-specific settings"""
+    config = shared_vars.image_threshold_config
+    
+    # Get adjustments
+    global_adj = config.get("global_adjustment", 0.0)
+    path_adj = get_path_specific_adjustment(template_path)
+    apply_global_to_modified = config.get("apply_global_to_modified", True)
+    
+    # Logic for combining adjustments
+    if path_adj != 0.0:  # Path-specific adjustment exists
+        if apply_global_to_modified:
+            return global_adj + path_adj  # Both applied
+        else:
+            return path_adj  # Only path-specific applied
+    else:  # No path-specific adjustment
+        return global_adj  # Only global applied
+
+def get_path_specific_adjustment(template_path):
+    """Get adjustment for specific image path"""
+    config = shared_vars.image_threshold_config
+    image_adjustments = config.get("image_adjustments", {})
+    return image_adjustments.get(template_path, 0.0)
+
+def match_image(template_path, threshold=0.8, area="center",mousegoto200=False, grayscale=False, no_grayscale=False, debug=False, quiet_failure=False, x1=None, y1=None, x2=None, y2=None):
     """Finds the image specified and returns coordinates depending on area: center, bottom, left, right, top.
     
     Args:
         x1, y1, x2, y2: Optional region coordinates to limit search area. If provided, only searches within this rectangle.
     """
+    if mousegoto200:
+        mouse_move(*scale_coordinates_1080p(200, 200))
     return _base_match_template(template_path, threshold, grayscale, no_grayscale, debug, area, quiet_failure, x1, y1, x2, y2)
 
 def greyscale_match_image(template_path, threshold=0.75, area="center", no_grayscale=False, debug=False, quiet_failure=False, x1=None, y1=None, x2=None, y2=None):
@@ -803,33 +837,27 @@ def wait_skip(img_path, threshold=0.8):
 
 def click_matching(image_path, threshold=0.8, area="center", mousegoto200=False, grayscale=False, no_grayscale=False, debug=False, recursive=True, x1=None, y1=None, x2=None, y2=None):
     """Find and click on image match. Returns True if clicked, False if not found."""
-    logger.debug(f"Attempting to click on: {image_path}", dirty=True)
-    if mousegoto200:
-        mouse_move(*scale_coordinates_1080p(200, 200))
-    found = ifexist_match(image_path, threshold, area, grayscale, no_grayscale, debug, x1, y1, x2, y2)
+    found = ifexist_match(image_path, threshold, area,mousegoto200, grayscale, no_grayscale, debug, x1, y1, x2, y2)
     if found:
         x, y = found[0]
-        logger.debug(f"Found and clicking element at ({x}, {y}): {image_path}", dirty=True)
-        mouse_move_click(x, y)
+        mouse_move_click(x, y, log_click=False)
         # Handle both multiprocessing.Value and plain float
         delay = shared_vars.click_delay.value if hasattr(shared_vars.click_delay, 'value') else shared_vars.click_delay
         time.sleep(delay)
         return True
     elif recursive:
-        logger.debug(f"Element not found, retrying: {image_path}", dirty=True)
         return click_matching(image_path, threshold, area, mousegoto200, grayscale=grayscale, no_grayscale=no_grayscale, debug=debug, x1=x1, y1=y1, x2=x2, y2=y2)
     else:
-        logger.debug(f"Element not found and recursive=False: {image_path}", dirty=True)
         return False
     
-def element_exist(img_path, threshold=0.8, area="center", grayscale=False, no_grayscale=False, debug=False, quiet_failure=False, x1=None, y1=None, x2=None, y2=None):
+def element_exist(img_path, threshold=0.8, area="center",mousegoto200=False, grayscale=False, no_grayscale=False, debug=False, quiet_failure=False, x1=None, y1=None, x2=None, y2=None):
     """Checks if the element exists if not returns none"""
-    result = match_image(img_path, threshold, area, grayscale, no_grayscale, debug, quiet_failure, x1, y1, x2, y2)
+    result = match_image(img_path, threshold, area, mousegoto200, grayscale, no_grayscale, debug, quiet_failure, x1, y1, x2, y2)
     return result
 
-def ifexist_match(img_path, threshold=0.8, area="center", grayscale=False, no_grayscale=False, debug=False, x1=None, y1=None, x2=None, y2=None):
+def ifexist_match(img_path, threshold=0.8, area="center",mousegoto200=False, grayscale=False, no_grayscale=False, debug=False, x1=None, y1=None, x2=None, y2=None):
     """checks if exists and returns the image location if found"""
-    result = match_image(img_path, threshold, area, grayscale, no_grayscale, debug, False, x1, y1, x2, y2)
+    result = match_image(img_path, threshold, area,mousegoto200, grayscale, no_grayscale, debug, False, x1, y1, x2, y2)
     return result
 
 def squad_order(status):
@@ -894,11 +922,9 @@ def set_game_monitor(monitor_index):
             shared_vars.game_monitor = 1
         else:
             shared_vars.game_monitor = monitor_index
-            logger.info(f"Set game monitor to index {monitor_index}")
     
     # Re-detect monitor resolution after changing monitor
     detect_monitor_resolution()
-    logger.info(f"Monitor {shared_vars.game_monitor} resolution: {MONITOR_WIDTH}x{MONITOR_HEIGHT}")
     return shared_vars.game_monitor
 
 def list_available_monitors():

@@ -135,7 +135,7 @@ def main(runs=None, difficulty=None, shared_vars=None):
         connection_manager.start_connection_monitor()
         
         # First run with SelectTeam=True
-        luxcavation_functions.pre_threads_setup(difficulty, SelectTeam=True)
+        luxcavation_functions.pre_threads_setup(difficulty, SelectTeam=True, config_type="threads_team_selection")
         
         # Remaining runs with SelectTeam=False
         for i in range(runs - 1):
@@ -145,7 +145,7 @@ def main(runs=None, difficulty=None, shared_vars=None):
                 while True:
                     if connection_manager.connection_event.is_set():
                         # Connection is good, proceed with run
-                        luxcavation_functions.pre_threads_setup(difficulty)
+                        luxcavation_functions.pre_threads_setup(difficulty, config_type="threads_team_selection")
                         break
                     else:
                         # Connection lost, wait for it to be restored

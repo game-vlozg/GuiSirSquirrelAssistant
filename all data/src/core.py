@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 def refill_enkephalin():
     """Try to refill enkephalin using modules"""
     logger.info("Starting enkephalin refill")
-    if common.click_matching("pictures/general/module.png"):
+    if common.click_matching("pictures/general/module.png",recursive=False):
         logger.debug("Module button clicked successfully")
         if not common.click_matching("pictures/general/right_arrow.png", recursive=False):
             logger.debug("Right arrow not found, navigating back")
@@ -44,22 +44,15 @@ def refill_enkephalin():
             return refill_enkephalin()
         common.click_matching("pictures/general/confirm_w.png")
         logger.info("Enkephalin refill completed")
-        common.key_press("esc")
-        time.sleep(0.5)
+        while common.element_exist("pictures/general/right_arrow.png"):
+            common.key_press("esc")
+            time.sleep(0.1)
         return True
     elif common.element_exist("pictures/CustomAdded1080p/mirror/general/InMirrorSelectCheck.png"):
         return False
 
 def navigate_to_md():
     """Navigate to mirror dungeon interface"""
-    if common.click_matching("pictures/CustomAdded1080p/mirror/general/button_to_md_tab.png", recursive=False):
-       if common.element_exist("pictures/mirror/general/md_enter.png"):
-            return
-       else:
-           common.mouse_move(*common.scale_coordinates_1080p(200, 200))
-           if common.click_matching("pictures/CustomAdded1080p/mirror/general/button_to_md_tab.png", recursive=False):
-                return
-
     while not common.element_exist("pictures/general/MD.png"):
         while common.click_matching("pictures/CustomAdded1080p/general/goback.png", recursive=False):
             pass
@@ -105,7 +98,7 @@ def reconnect():
     if common.element_exist("pictures/general/no_op.png"):
         common.click_matching("pictures/general/close.png")
         logger.critical("COULD NOT RECONNECT TO THE SERVER. SHUTTING DOWN!")
-        os._exit(0)
+        sys.exit(0)
 
 def battle():
     """Main battle loop handling winrate, ego checks, and skill events"""
@@ -133,12 +126,12 @@ def battle():
             logger.info(f"Battle finished!")
             return
         
-        if common.element_exist("pictures/events/skip.png"): #Checks for special battle skill checks prompt then calls skill check functions
+        if common.element_exist("pictures/events/skip.png", mousegoto200=True): #Checks for special battle skill checks prompt then calls skill check functions
             logger.debug("Skip button found, handling skill check")
             common.mouse_up()
             while(True):
-                common.click_skip(1)
-                if common.element_exist("pictures/mirror/general/event.png"):
+                common.click_skip(1) 
+                if common.element_exist("pictures/mirror/general/event.png", 0.7):
                     logger.debug("Battle check event detected")
                     battle_check()
                     break
@@ -257,13 +250,14 @@ def ego_check():
 def battle_check():
 
     """Handle special battle events and skill checks"""
-    common.sleep(1)
     if common.click_matching("pictures/battle/investigate.png", recursive=False):
         common.wait_skip("pictures/events/continue.png")
         return 0
         
-    elif common.click_matching("pictures/battle/NO.png", recursive=False):
-        for i in range(2):
+    elif common.element_exist("pictures/battle/NO.png"): #Woppily
+        logger.info("WOPPILY PT2")
+        for i in range(3):
+            common.click_matching("pictures/battle/NO.png")
             common.mouse_move_click(*common.scale_coordinates_1440p(1193, 623))
             while(not common.element_exist("pictures/events/proceed.png")):
                 if common.click_matching("pictures/events/continue.png", recursive=False):
@@ -274,7 +268,9 @@ def battle_check():
             while(not common.element_exist("pictures/battle/NO.png")):
                 common.mouse_click()
 
-    elif common.click_matching("pictures/battle/refuse.png", recursive=False):
+    elif common.element_exist("pictures/battle/refuse.png"): # Pink Shoes
+        logger.info("PINK SHOES")
+        common.click_matching("pictures/battle/refuse.png")
         common.wait_skip("pictures/events/proceed.png")
         skill_check()
         return 0
