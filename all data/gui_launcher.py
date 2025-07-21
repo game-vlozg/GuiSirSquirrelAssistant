@@ -634,7 +634,8 @@ def load_initial_selections(tab_type="mirror"):
 def is_any_process_running():
     """Check if any automation is currently running"""
     return (process is not None or exp_process is not None or 
-            threads_process is not None or chain_running)
+            threads_process is not None or chain_running or 
+            game_launcher_process is not None)
 
 def get_running_process_name():
     """Get the name of the currently running process"""
@@ -646,6 +647,8 @@ def get_running_process_name():
         return "Exp"
     if threads_process is not None:
         return "Threads"
+    if game_launcher_process is not None:
+        return "Game Launcher"
     return None
 
 # Shared process conflict check
@@ -829,8 +832,9 @@ def save_gui_config(config=None):
                 'github_repo': 'GuiSirSquirrelAssistant',
                 'auto_update': bool(auto_update_var.get()) if 'auto_update_var' in globals() else False,
                 'create_backups': bool(create_backups_var.get()) if 'create_backups_var' in globals() else True,
+                'preserve_last_3_backups': bool(preserve_last_3_backups_var.get()) if 'preserve_last_3_backups_var' in globals() else True,
                 'update_notifications': bool(update_notifications_var.get()) if 'update_notifications_var' in globals() else True,
-                'kill_processes_on_exit': bool(kill_processes_var.get()) if 'kill_processes_var' in globals() else False,
+                'kill_processes_on_exit': True,
                 'chain_threads_runs': int(chain_threads_entry.get()) if 'chain_threads_entry' in globals() and chain_threads_entry.get().isdigit() else 3,
                 'chain_exp_runs': int(chain_exp_entry.get()) if 'chain_exp_entry' in globals() and chain_exp_entry.get().isdigit() else 2,
                 'chain_mirror_runs': int(chain_mirror_entry.get()) if 'chain_mirror_entry' in globals() and chain_mirror_entry.get().isdigit() else 1,
@@ -1031,8 +1035,8 @@ shortcut_vars = {
 # MOVED: Update-related variables (MUST be global for auto-update to work without Settings tab)
 auto_update_var = ctk.BooleanVar(value=config['Settings'].get('auto_update', False))
 create_backups_var = ctk.BooleanVar(value=config['Settings'].get('create_backups', True))
+preserve_last_3_backups_var = ctk.BooleanVar(value=config['Settings'].get('preserve_last_3_backups', True))
 update_notifications_var = ctk.BooleanVar(value=config['Settings'].get('update_notifications', True))
-kill_processes_var = ctk.BooleanVar(value=config['Settings'].get('kill_processes_on_exit', False))
 
 # MOVED: Global update callback functions (MUST be global for auto-update to work)
 def check_updates_callback(success, message, update_available):
@@ -1076,6 +1080,7 @@ def perform_update():
         "Kryxzort", 
         "GuiSirSquirrelAssistant", 
         create_backup=create_backups_var.get(),
+        preserve_only_last_3=preserve_last_3_backups_var.get(),
         callback=update_finished_callback
     )
 
@@ -1278,12 +1283,59 @@ def on_checkbox_toggle(changed_option):
 # =====================================================================
 
 # UI interaction functions
-def toggle_expand(frame, arrow_var):
-    """Toggle expansion of frames"""
+def populate_sinner_dropdowns(frame, status):
+    """Populate the dropdown content for a specific status section (lazy loaded)"""
+    # Check if already populated
+    if len(frame.winfo_children()) > 0:
+        return
+    
+    dropdown_vars[status] = []
+    default_order = squad_data.get(status, {})
+    reverse_map = {v: k for k, v in default_order.items()}
+
+    for i in range(12):
+        row = ctk.CTkFrame(master=frame, fg_color="transparent")
+        row.pack(pady=1, anchor="w")
+
+        label = ctk.CTkLabel(
+            master=row,
+            text=f"{i+1}.",
+            anchor="e",
+            font=ctk.CTkFont(size=18),
+            text_color="#b0b0b0",
+            width=30
+        )
+        label.pack(side="left", padx=(0, 10))
+
+        var = ctk.StringVar()
+        raw_name = reverse_map.get(i + 1)
+        pretty = next((x for x in SINNER_LIST if sinner_key(x) == raw_name), "None") if raw_name else "None"
+        var.set(pretty)
+
+        def bind_callback(status=status, idx=i, v=var):
+            v.trace_add("write", lambda *a: dropdown_callback(status, idx))
+
+        dropdown = ctk.CTkOptionMenu(
+            master=row,
+            variable=var,
+            values=SINNER_LIST + ["None"],
+            width=160,
+            font=ctk.CTkFont(size=16)
+        )
+        dropdown.pack(side="left")
+        bind_callback()
+        dropdown_vars[status].append(var)
+
+def toggle_expand(frame, arrow_var, status=None):
+    """Toggle expansion of frames with lazy loading for sinner sections"""
     if frame.winfo_ismapped():
         frame.pack_forget()
         arrow_var.set("▶")
     else:
+        # Lazy load content if this is a sinner assignment section
+        if status and any(status in column for column in STATUS_COLUMNS):
+            populate_sinner_dropdowns(frame, status)
+        
         frame.pack(pady=(2, 8), fill="x")
         arrow_var.set("▼")
 
@@ -1561,6 +1613,8 @@ def start_chain_automation():
     
     # Build chain queue
     chain_queue = []
+    if launch_game_var.get():
+        chain_queue.append(("GameLauncher", 1))
     if threads_runs > 0:
         chain_queue.append(("Threads", threads_runs))
     if exp_runs > 0:
@@ -1574,33 +1628,13 @@ def start_chain_automation():
     current_chain_step = 0
     chain_start_button.configure(text="Stop Chain")
     
-    # Check if game launcher is enabled
-    if launch_game_var.get():
-        chain_status_label.configure(text="Chain Status: Launching game...")
-        try:
-            from src import Game_Launcher
-            global game_launcher_process
-            
-            # Start game launcher process like other bots
-            game_launcher_process = Process(target=Game_Launcher.launch_limbussy, daemon=True)
-            game_launcher_process.start()
-            
-            chain_status_label.configure(text="Chain Status: Game launching in background...")
-            
-        except Exception as e:
-            logging.error(f"Failed to launch game: {e}")
-            chain_status_label.configure(text="Chain Status: Game launch failed, stopping chain")
-            stop_chain_automation()
-            return
-        finally:
-            game_launcher_process = None
-    else:
-        chain_status_label.configure(text="Chain Status: Starting...")
+    chain_status_label.configure(text="Chain Status: Starting...")
     
     # Save current UI settings to config (like individual automations do)
     save_gui_config()
     
     run_next_chain_step()
+
 
 def stop_chain_automation():
     """Stop chain automation"""
@@ -1678,7 +1712,13 @@ def run_next_chain_step():
     
     # Get current step
     automation_type, runs = chain_queue[current_chain_step]
-    chain_status_label.configure(text=f"Chain Status: Running {automation_type} ({runs} runs) - Step {current_chain_step + 1}/{len(chain_queue)}")
+    
+    # Set appropriate status message
+    if automation_type == "GameLauncher":
+        status_text = f"Chain Status: Launching game - Step {current_chain_step + 1}/{len(chain_queue)}"
+    else:
+        status_text = f"Chain Status: Running {automation_type} ({runs} runs) - Step {current_chain_step + 1}/{len(chain_queue)}"
+    chain_status_label.configure(text=status_text)
     
     # Save selected statuses for Mirror automation
     if automation_type == "Mirror":
@@ -1704,6 +1744,12 @@ def run_next_chain_step():
             global process
             process = Process(target=compiled_runner.main, args=(runs, shared_vars), daemon=True)
             process.start()
+            
+        elif automation_type == "GameLauncher":
+            from src import Game_Launcher
+            global game_launcher_process
+            game_launcher_process = Process(target=Game_Launcher.launch_limbussy, daemon=True)
+            game_launcher_process.start()
         
         # Move to next step
         current_chain_step += 1
@@ -1717,7 +1763,7 @@ def run_next_chain_step():
 
 def monitor_chain_step():
     """Monitor the current chain step and proceed when done"""
-    global chain_running, process, exp_process, threads_process
+    global chain_running, process, exp_process, threads_process, game_launcher_process
     
     if not chain_running:
         return
@@ -1751,6 +1797,12 @@ def monitor_chain_step():
             process_finished = True
             if process and not process.is_alive():
                 process = None  # Clean up
+    elif automation_type == "GameLauncher":
+        current_process = game_launcher_process
+        if game_launcher_process is None or not game_launcher_process.is_alive():
+            process_finished = True
+            if game_launcher_process and not game_launcher_process.is_alive():
+                game_launcher_process = None  # Clean up
     
     if process_finished:
         # Reset the button state for the completed automation
@@ -1907,8 +1959,8 @@ def apply_theme():
             # Start theme_restart.py with the theme name and specify "Settings" tab
             subprocess.Popen([sys.executable, THEME_RESTART_PATH, theme_name, "Settings"])
             
-            # Short delay then exit
-            root.after(100, lambda: sys.exit(0))
+            # Exit immediately - no delay needed
+            sys.exit(0)
         except Exception as e:
             error(f"Error applying theme: {e}")
             messagebox.showerror("Error", f"Failed to apply theme: {e}")
@@ -2886,7 +2938,7 @@ chain_mirror_entry.bind('<Return>', lambda e: update_chain_mirror_runs())
 collect_rewards_frame = ctk.CTkFrame(chain_frame)
 collect_rewards_frame.pack(pady=2)
 collect_rewards_var = ctk.BooleanVar(value=config['Settings'].get('collect_rewards_when_finished', False))
-collect_rewards_checkbox = ctk.CTkCheckBox(collect_rewards_frame, text="Collect rewards when finished", variable=collect_rewards_var, command=save_gui_config)
+collect_rewards_checkbox = ctk.CTkCheckBox(collect_rewards_frame, text="Collect XP and mission rewards when finished", variable=collect_rewards_var, command=save_gui_config)
 collect_rewards_checkbox.pack(side="left", padx=(10, 10))
 
 # Extract lunacy toggle
@@ -2977,7 +3029,7 @@ def load_settings_tab():
 
             def make_toggle(stat=status, arrow=arrow_var, button_ref=None):
                 def toggle():
-                    toggle_expand(expand_frames[stat], arrow)
+                    toggle_expand(expand_frames[stat], arrow, stat)
                     if button_ref:
                         button_ref.configure(text=f"{arrow.get()} {stat.capitalize()}")
                 return toggle
@@ -2998,42 +3050,8 @@ def load_settings_tab():
             expand_frames[status] = frame
             frame.pack_forget()
 
+            # Initialize empty dropdown_vars for this status (will be populated on first expand)
             dropdown_vars[status] = []
-            default_order = squad_data.get(status, {})
-            reverse_map = {v: k for k, v in default_order.items()}
-
-            for i in range(12):
-                row = ctk.CTkFrame(master=frame, fg_color="transparent")
-                row.pack(pady=1, anchor="w")
-
-                label = ctk.CTkLabel(
-                    master=row,
-                    text=f"{i+1}.",
-                    anchor="e",
-                    font=ctk.CTkFont(size=18),
-                    text_color="#b0b0b0",
-                    width=30
-                )
-                label.pack(side="left", padx=(0, 10))
-
-                var = ctk.StringVar()
-                raw_name = reverse_map.get(i + 1)
-                pretty = next((x for x in SINNER_LIST if sinner_key(x) == raw_name), "None") if raw_name else "None"
-                var.set(pretty)
-
-                def bind_callback(status=status, idx=i, v=var):
-                    v.trace_add("write", lambda *a: dropdown_callback(status, idx))
-
-                dropdown = ctk.CTkOptionMenu(
-                    master=row,
-                    variable=var,
-                    values=SINNER_LIST + ["None"],
-                    width=160,
-                    font=ctk.CTkFont(size=16)
-                )
-                dropdown.pack(side="left")
-                bind_callback()
-                dropdown_vars[status].append(var)
 
 
     # Display Settings section
@@ -3296,6 +3314,32 @@ def load_settings_tab():
     # Dictionary to store image threshold entries
     image_threshold_entries = {}
     
+    def folder_has_images_recursive(folder_path):
+        """Check if a folder contains image files (recursively, including subfolders)"""
+        full_path = os.path.join(BASE_PATH, folder_path)
+        if not os.path.exists(full_path):
+            return False
+        
+        try:
+            for root, dirs, files in os.walk(full_path):
+                if any(f.lower().endswith(('.png', '.jpg', '.jpeg')) for f in files):
+                    return True
+            return False
+        except:
+            return False
+    
+    def folder_has_direct_images(folder_path):
+        """Check if a folder contains image files (directly, not in subfolders)"""
+        full_path = os.path.join(BASE_PATH, folder_path)
+        if not os.path.exists(full_path):
+            return False
+        
+        try:
+            files = os.listdir(full_path)
+            return any(f.lower().endswith(('.png', '.jpg', '.jpeg')) for f in files if os.path.isfile(os.path.join(full_path, f)))
+        except:
+            return False
+    
     def create_collapsible_folder(parent, folder_name, folder_path, level=0):
         """Create a collapsible folder section like other GUI sections"""
         # Main container for this folder
@@ -3330,8 +3374,79 @@ def load_settings_tab():
         expand_btn.pack(side="left", padx=5)
         
         # Folder name label
-        folder_label = ctk.CTkLabel(header_frame, text=f"📁 {folder_name}", font=ctk.CTkFont(size=12, weight="bold"))
+        folder_label = ctk.CTkLabel(header_frame, text=f"📁 {folder_name}", font=ctk.CTkFont(size=12, weight="bold"), cursor="hand2")
         folder_label.pack(side="left", padx=5)
+        
+        # Double-click to open folder
+        def open_folder(event):
+            try:
+                full_path = os.path.join(BASE_PATH, folder_path)
+                if platform.system() == "Windows":
+                    os.startfile(full_path)
+                elif platform.system() == "Darwin":  # macOS
+                    subprocess.run(["open", full_path])
+                else:  # Linux and others
+                    subprocess.run(["xdg-open", full_path])
+            except Exception as e:
+                print(f"Failed to open folder: {e}")
+        
+        folder_label.bind("<Double-Button-1>", open_folder)
+        
+        # Only show folder threshold entry if folder contains direct images (not just in subfolders)
+        if folder_has_direct_images(folder_path):
+            # Folder threshold entry
+            folder_threshold_entry = ctk.CTkEntry(header_frame, width=80, placeholder_text="0.0", font=ctk.CTkFont(size=10))
+            folder_threshold_entry.pack(side="left", padx=5)
+            
+            # Load existing folder threshold
+            try:
+                import src.shared_vars as sv
+                folder_adjustments = sv.image_threshold_config.get("folder_adjustments", {})
+                current_value = folder_adjustments.get(folder_path, 0.0)
+                if current_value != 0.0:
+                    folder_threshold_entry.delete(0, 'end')
+                    folder_threshold_entry.insert(0, str(current_value))
+            except:
+                pass
+            
+            # Auto-save folder threshold on change
+            def save_folder_threshold(*args):
+                try:
+                    import src.shared_vars as sv
+                    import json
+                    
+                    value = float(folder_threshold_entry.get()) if folder_threshold_entry.get() else 0.0
+                    
+                    # Get current config and preserve existing adjustments
+                    config = {
+                        "global_adjustment": sv.image_threshold_config.get("global_adjustment", 0.0),
+                        "apply_global_to_modified": sv.image_threshold_config.get("apply_global_to_modified", True),
+                        "folder_adjustments": sv.image_threshold_config.get("folder_adjustments", {}),
+                        "image_adjustments": sv.image_threshold_config.get("image_adjustments", {})
+                    }
+                    
+                    # Update folder adjustment
+                    if value != 0.0:
+                        config["folder_adjustments"][folder_path] = value
+                    elif folder_path in config["folder_adjustments"]:
+                        del config["folder_adjustments"][folder_path]
+                    
+                    # Save to file
+                    config_path = os.path.join(BASE_PATH, "config", "image_thresholds.json")
+                    with open(config_path, 'w') as f:
+                        json.dump(config, f, indent=2)
+                    
+                    # Reload in shared_vars
+                    sv.ConfigCache.reload_config("image_thresholds")
+                    sv.image_threshold_config = sv.ConfigCache.get_config("image_thresholds")
+                    
+                except ValueError:
+                    pass  # Invalid number, ignore
+                except Exception as e:
+                    pass  # Ignore other errors for now
+            
+            folder_threshold_entry.bind('<FocusOut>', save_folder_threshold)
+            folder_threshold_entry.bind('<Return>', save_folder_threshold)
         
         return folder_container, content_frame
     
@@ -3385,6 +3500,7 @@ def load_settings_tab():
                 config = {
                     "global_adjustment": float(global_threshold_entry.get()),
                     "apply_global_to_modified": not apply_global_var.get(),
+                    "folder_adjustments": sv.image_threshold_config.get("folder_adjustments", {}),
                     "image_adjustments": sv.image_threshold_config.get("image_adjustments", {})
                 }
                 
@@ -3422,13 +3538,9 @@ def load_settings_tab():
             for item in items:
                 item_path = os.path.join(full_path, item)
                 if os.path.isdir(item_path):
-                    # Check if folder contains images (recursively)
-                    has_images = False
-                    for root, dirs, files in os.walk(item_path):
-                        if any(f.lower().endswith(('.png', '.jpg', '.jpeg')) for f in files):
-                            has_images = True
-                            break
-                    if has_images:
+                    # Use the recursive function to decide which folders to show
+                    subfolder_path = f"{folder_path}/{item}" if folder_path != "pictures" else f"pictures/{item}"
+                    if folder_has_images_recursive(subfolder_path):
                         folders.append(item)
                 elif item.lower().endswith(('.png', '.jpg', '.jpeg')):
                     images.append(item)
@@ -3472,10 +3584,11 @@ def load_settings_tab():
             import src.shared_vars as sv
             import json
             
-            # Preserve existing image adjustments
+            # Preserve existing adjustments
             config = {
                 "global_adjustment": float(global_threshold_entry.get()),
                 "apply_global_to_modified": not apply_global_var.get(),
+                "folder_adjustments": sv.image_threshold_config.get("folder_adjustments", {}),
                 "image_adjustments": sv.image_threshold_config.get("image_adjustments", {})
             }
             
@@ -3664,6 +3777,15 @@ def load_settings_tab():
         )
         auto_update_checkbox.pack(anchor="w", padx=10, pady=5)
 
+        # Preserve last 3 backups toggle
+        preserve_backups_checkbox = ctk.CTkCheckBox(
+            update_frame,
+            text="Preserve only last 3 backups",
+            variable=preserve_last_3_backups_var,
+            command=lambda: save_gui_config()
+        )
+        preserve_backups_checkbox.pack(anchor="w", padx=10, pady=5)
+
         # Create backups toggle
         create_backups_checkbox = ctk.CTkCheckBox(
             update_frame,
@@ -3730,18 +3852,7 @@ def load_settings_tab():
     )
     theme_dropdown.pack(pady=(0, 15))
 
-    # Kill processes on exit toggle
-    ctk.CTkLabel(settings_scroll, text="Application Behavior", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(8, 0))
-    behavior_frame = ctk.CTkFrame(settings_scroll)
-    behavior_frame.pack()
 
-    kill_processes_checkbox = ctk.CTkCheckBox(
-        behavior_frame,
-        text="Kill processes on exit (disable for faster closing)",
-        variable=kill_processes_var,
-        command=lambda: save_gui_config()
-    )
-    kill_processes_checkbox.pack(anchor="w", padx=10, pady=10)
 
     settings_tab_loaded = True
 
@@ -4148,54 +4259,53 @@ def on_closing():
         except Exception:
             pass  # Ignore cleanup errors
         
-        if kill_processes_var.get():
-            try:
-                # Kill multiprocessing processes with force if needed
-                if process and process.is_alive():
-                    process.terminate()
-                    process.join(timeout=2)
-                    if process.is_alive():
-                        process.kill()
-                        process.join(timeout=1)
-                if exp_process and exp_process.is_alive():
-                    exp_process.terminate()
-                    exp_process.join(timeout=2)
-                    if exp_process.is_alive():
-                        exp_process.kill()
-                        exp_process.join(timeout=1)
-                if threads_process and threads_process.is_alive():
-                    threads_process.terminate()
-                    threads_process.join(timeout=2)
-                    if threads_process.is_alive():
-                        threads_process.kill()
-                        threads_process.join(timeout=1)
-                
-                # Kill subprocess processes with force
-                if battle_process and battle_process.poll() is None:
+        try:
+            # Kill multiprocessing processes with force if needed
+            if process and process.is_alive():
+                process.terminate()
+                process.join(timeout=2)
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=1)
+            if exp_process and exp_process.is_alive():
+                exp_process.terminate()
+                exp_process.join(timeout=2)
+                if exp_process.is_alive():
+                    exp_process.kill()
+                    exp_process.join(timeout=1)
+            if threads_process and threads_process.is_alive():
+                threads_process.terminate()
+                threads_process.join(timeout=2)
+                if threads_process.is_alive():
+                    threads_process.kill()
+                    threads_process.join(timeout=1)
+            
+            # Kill subprocess processes with force
+            if battle_process and battle_process.poll() is None:
+                try:
+                    os.kill(battle_process.pid, signal.SIGTERM)
+                    time.sleep(0.5)
+                    if battle_process.poll() is None:
+                        os.kill(battle_process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            for proc in function_process_list:
+                if proc and proc.poll() is None:
                     try:
-                        os.kill(battle_process.pid, signal.SIGTERM)
+                        os.kill(proc.pid, signal.SIGTERM)
                         time.sleep(0.5)
-                        if battle_process.poll() is None:
-                            os.kill(battle_process.pid, signal.SIGKILL)
+                        if proc.poll() is None:
+                            os.kill(proc.pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
-                for proc in function_process_list:
-                    if proc and proc.poll() is None:
-                        try:
-                            os.kill(proc.pid, signal.SIGTERM)
-                            time.sleep(0.5)
-                            if proc.poll() is None:
-                                os.kill(proc.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-            except Exception as e:
-                error(f"Error killing processes: {e}")
+        except Exception as e:
+            error(f"Error killing processes: {e}")
         
-            try:
-                if 'log_handler' in globals() and log_handler:
-                    log_handler.close()
-            except Exception:
-                pass  # Ignore cleanup errors
+        try:
+            if 'log_handler' in globals() and log_handler:
+                log_handler.close()
+        except Exception:
+            pass  # Ignore cleanup errors
         
         try:
             keyboard_handler.stop()
@@ -4253,6 +4363,7 @@ if __name__ == "__main__":
                         "Kryxzort", 
                         "GuiSirSquirrelAssistant", 
                         create_backup=create_backups_var.get(),
+                        preserve_only_last_3=preserve_last_3_backups_var.get(),
                         callback=lambda success, message: (
                             update_status_label.configure(text=f"Update Status: {message}")
                             if 'update_status_label' in globals() else None

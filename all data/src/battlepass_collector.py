@@ -1,6 +1,7 @@
 import common
 import time
 import sys
+import signal
 import logging
 import os
 
@@ -37,6 +38,10 @@ def signal_handler(sig, frame):
     logger.warning(f"Termination signal received, shutting down...")
     sys.exit(0)
 
+# Register signal handlers
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+
 def main():
     while not common.element_exist("pictures/CustomAdded1080p/Mail/Mail.png"):
         common.mouse_move_click(*common.scale_coordinates_1080p(1000, 970))
@@ -56,10 +61,9 @@ def main():
     common.mouse_move_click(*common.scale_coordinates_1080p(350,80))
 
     claim_rewards()
-
-    while not common.element_exist("pictures/CustomAdded1080p/Mail/Mail.png"):
+    common.key_press("esc")
+    while common.element_exist("pictures/CustomAdded1080p/battlepass/pass_missions.png", x1=common.scale_x_1080p(450), y1=common.scale_y_1080p(65), x2=common.scale_x_1080p(640), y2=common.scale_y_1080p(100)):
         common.key_press("esc")
-
 
 def claim_missions():
     while True:

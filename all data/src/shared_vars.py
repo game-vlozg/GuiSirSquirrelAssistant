@@ -250,7 +250,6 @@ def _load_shared_vars():
             for var_name, gui_value in gui_values.items():
                 value = shared_vars_data.get(var_name, gui_value)
                 globals()[var_name] = value
-                logger.debug(f"Loaded shared variable {var_name} = {value}")
             
             logger.info("Configuration loaded successfully")
                 

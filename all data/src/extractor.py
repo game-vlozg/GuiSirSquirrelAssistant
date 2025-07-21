@@ -1,6 +1,7 @@
 import common
 import time
 import sys
+import signal
 import os
 import logging
 
@@ -37,6 +38,9 @@ def signal_handler(sig, frame):
     logger.warning(f"Termination signal received, shutting down...")
     sys.exit(0)
 
+# Register signal handlers
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 def main():
     while not common.element_exist("pictures/CustomAdded1080p/general/info.png"):
@@ -55,17 +59,23 @@ def main():
 
 
 def extract():
-    duration = 1.5
+    duration = 4
     end_time = time.time() + duration
 
-    while not common.element_exist("pictures/CustomAdded1080p/general/confirm.png", mousegoto200=True):
+    while not common.element_exist("pictures/CustomAdded1080p/general/confirm.png", mousegoto200=True, threshold=0.9):
         common.mouse_move_click(*common.scale_coordinates_1080p(1000, 660))
         if time.time() > end_time:
             return
+        
     while common.click_matching("pictures/CustomAdded1080p/general/confirm.png", mousegoto200=True, recursive=False):
         pass
 
-
     while not common.click_matching("pictures/CustomAdded1080p/extraction/Return.png", recursive=False):
-        common.mouse_move_click(*common.scale_coordinates_1080p(960, 530))
+        common.mouse_move_click(*common.scale_coordinates_1080p(1040, 540))
+        if common.element_exist("pictures/CustomAdded1080p/extraction/Exchange.png"):
+            while common.element_exist("pictures/CustomAdded1080p/extraction/Exchange.png"):
+                common.key_press("esc")
+                common.sleep(0.5)
+            extract()
+            return
         common.sleep(0.5)

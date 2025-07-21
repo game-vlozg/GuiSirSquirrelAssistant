@@ -516,22 +516,34 @@ def _base_match_template(template_path, threshold=0.8, grayscale=False,no_graysc
     return _extract_coordinates(filtered_boxes, area, crop_offset_x, crop_offset_y)
 
 def get_total_threshold_adjustment(template_path):
-    """Get combined threshold adjustment based on global and path-specific settings"""
+    """Get combined threshold adjustment based on global, folder, and path-specific settings"""
     config = shared_vars.image_threshold_config
     
     # Get adjustments
     global_adj = config.get("global_adjustment", 0.0)
+    folder_adj = get_folder_specific_adjustment(template_path)
     path_adj = get_path_specific_adjustment(template_path)
     apply_global_to_modified = config.get("apply_global_to_modified", True)
     
-    # Logic for combining adjustments
-    if path_adj != 0.0:  # Path-specific adjustment exists
+    # Logic for combining adjustments (folder + specific image adjustments are additive)
+    total_specific_adj = folder_adj + path_adj
+    
+    if total_specific_adj != 0.0:  # Any specific adjustment exists
         if apply_global_to_modified:
-            return global_adj + path_adj  # Both applied
+            return global_adj + total_specific_adj  # Global + folder + image-specific
         else:
-            return path_adj  # Only path-specific applied
-    else:  # No path-specific adjustment
+            return total_specific_adj  # Only folder + image-specific
+    else:  # No specific adjustments
         return global_adj  # Only global applied
+
+def get_folder_specific_adjustment(template_path):
+    """Get adjustment for folder containing the image"""
+    config = shared_vars.image_threshold_config
+    folder_adjustments = config.get("folder_adjustments", {})
+    
+    # Extract folder path from template path
+    folder_path = os.path.dirname(template_path)
+    return folder_adjustments.get(folder_path, 0.0)
 
 def get_path_specific_adjustment(template_path):
     """Get adjustment for specific image path"""

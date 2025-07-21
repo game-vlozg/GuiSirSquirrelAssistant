@@ -1,5 +1,6 @@
 {
   "global_adjustment": 0.0,
   "apply_global_to_modified": true,
+  "folder_adjustments": {},
   "image_adjustments": {}
 }

@@ -504,6 +504,8 @@ class Mirror:
             min_x_scaled = common.scale_x_1080p(360)
             max_x_scaled = common.scale_x_1080p(1555)
             filtered_rewards = [reward for reward in found if min_y_scaled <= reward[1] <= max_y_scaled and min_x_scaled <= reward[0] <= max_x_scaled]
+            if not filtered_rewards:
+                filtered_rewards = ego_gift_matches
             x,y = common.random_choice(filtered_rewards)
             common.mouse_move_click(x, y)
         else:
@@ -943,8 +945,9 @@ class Mirror:
                 common.click_matching("pictures/mirror/restshop/enhance/power_up.png")
                 if common.element_exist("pictures/mirror/restshop/enhance/more.png"): #If player has no more cost exit
                     common.click_matching("pictures/mirror/restshop/enhance/cancel.png")
-                    return
+                    return False  # Return False to indicate insufficient resources
                 common.click_matching("pictures/mirror/restshop/enhance/confirm.png", recursive=False)
+        return True  # Return True to indicate successful completion
 
     def enhance_gifts(self,status):
         """Enhancement gift process"""
@@ -972,7 +975,8 @@ class Mirror:
                                                                                          expand_below=expand_below_scaled,
                                                                                          use_bounding_box=False, return_bool=True)]
                 if len(gifts):
-                    self.upgrade(gifts,status,shift_x,shift_y)
+                    if not self.upgrade(gifts,status,shift_x,shift_y):
+                        break  # Exit loop if insufficient resources
 
             wordless_gifts = common.ifexist_match("pictures/mirror/restshop/enhance/wordless_enhance.png", x1=x1, y1=y1, x2=x2, y2=y2)
             if wordless_gifts:
@@ -980,7 +984,8 @@ class Mirror:
                 shift_x_scaled, shift_y_scaled = common.scale_coordinates_1440p(shift_x, shift_y)
                 wordless_gifts = [i for i in wordless_gifts if common.luminence(i[0]+shift_x_scaled,i[1]+shift_y_scaled) > 22]
                 if len(wordless_gifts):
-                    self.upgrade(wordless_gifts,"pictures/mirror/restshop/enhance/wordless_enhance.png",shift_x,shift_y)
+                    if not self.upgrade(wordless_gifts,"pictures/mirror/restshop/enhance/wordless_enhance.png",shift_x,shift_y):
+                        break  # Exit loop if insufficient resources
 
             if common.element_exist("pictures/mirror/restshop/scroll_bar.png") and not common.element_exist("pictures/CustomAdded1080p/mirror/general/fully_scrolled.png"):
                 common.click_matching("pictures/mirror/restshop/scroll_bar.png")

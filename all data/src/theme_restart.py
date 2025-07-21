@@ -14,8 +14,7 @@ def restart_app_with_theme():
     # Get tab name if specified
     tab_name = sys.argv[2] if len(sys.argv) > 2 else ""
     
-    # Minimal wait - just enough to avoid conflicts
-    time.sleep(0.3)
+    # No delay needed - OS handles process management
     
     # Start the application with the specified theme and tab with high priority
     cmd = ["python", main_script_path, theme_name]

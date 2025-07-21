@@ -783,7 +783,37 @@ except Exception as e:
             logger.error(f"Error restarting application: {e}")
             return False
     
-    def perform_update(self, create_backup=True, auto_restart=True):
+    def cleanup_old_backups(self, keep_count=3):
+        """Remove old backup folders, keeping only the most recent ones"""
+        try:
+            if not os.path.exists(self.backup_path):
+                return
+            
+            # Get all backup directories
+            backup_dirs = []
+            for item in os.listdir(self.backup_path):
+                item_path = os.path.join(self.backup_path, item)
+                if os.path.isdir(item_path) and item.startswith("backup_"):
+                    backup_dirs.append(item_path)
+            
+            # Sort by modification time (newest first)
+            backup_dirs.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            
+            # Remove old backups beyond keep_count
+            for old_backup in backup_dirs[keep_count:]:
+                try:
+                    shutil.rmtree(old_backup)
+                    logger.info(f"Removed old backup: {os.path.basename(old_backup)}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove old backup {old_backup}: {e}")
+            
+            if len(backup_dirs) > keep_count:
+                logger.info(f"Cleaned up {len(backup_dirs) - keep_count} old backups, kept {keep_count} most recent")
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up old backups: {e}")
+    
+    def perform_update(self, create_backup=True, auto_restart=True, preserve_only_last_3=True):
         # SAFETY: Always create backup regardless of parameter (for safety)
         # If create_backup is True, we'll keep the backup
         # If create_backup is False, we'll delete it after successful update
@@ -824,6 +854,10 @@ except Exception as e:
                 logger.info("Cleaned up unwanted backup after successful update")
             except:
                 pass
+        
+        # Preserve only last 3 backups if requested
+        if create_backup and preserve_only_last_3:
+            self.cleanup_old_backups(keep_count=3)
                 
         # Clean up
         self.clean_temp_files()
@@ -834,9 +868,9 @@ except Exception as e:
         
         return True, f"Successfully updated to {latest_version}"
     
-    def check_and_update_async(self, callback=None, create_backup=True, auto_restart=True):
+    def check_and_update_async(self, callback=None, create_backup=True, auto_restart=True, preserve_only_last_3=True):
         def update_thread():
-            result, message = self.perform_update(create_backup, auto_restart)
+            result, message = self.perform_update(create_backup, auto_restart, preserve_only_last_3)
             if callback:
                 callback(result, message)
         
@@ -965,10 +999,10 @@ def check_for_updates(repo_owner, repo_name, callback=None):
             callback(False, f"Error: {e}", False)
         return False
 
-def auto_update(repo_owner, repo_name, create_backup=True, callback=None):
+def auto_update(repo_owner, repo_name, create_backup=True, preserve_only_last_3=True, callback=None):
     try:
         updater = Updater(repo_owner, repo_name)
-        return updater.check_and_update_async(callback, create_backup)
+        return updater.check_and_update_async(callback, create_backup, preserve_only_last_3=preserve_only_last_3)
     except Exception as e:
         logger.error(f"Error starting auto-update: {e}")
         if callback:

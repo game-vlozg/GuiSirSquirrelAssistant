@@ -1,8 +1,6 @@
 {
-    "order": {
-        "favor of the nebula": 1,
-        "starlight guidance": 2,
-        "interstellar travel": 3,
-        "star shower": 4
-    }
+  "order": {
+    "favor of the nebula": 1,
+    "starlight guidance": 2
+  }
 }
