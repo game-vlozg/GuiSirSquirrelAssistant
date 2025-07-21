@@ -125,8 +125,9 @@ def battle():
             battle_finished = 1
             logger.info(f"Battle finished!")
             return
-        
-        if common.element_exist("pictures/events/skip.png", mousegoto200=True): #Checks for special battle skill checks prompt then calls skill check functions
+            
+        common.mouse_move(*common.scale_coordinates_1080p(20, 1060))
+        if common.element_exist("pictures/events/skip.png"): #Checks for special battle skill checks prompt then calls skill check functions
             logger.debug("Skip button found, handling skill check")
             common.mouse_up()
             while(True):
@@ -231,7 +232,7 @@ def ego_check():
             else:
                 logger.warning("No usable EGO found for bad clash")
                 if common.element_exist("pictures/battle/ego/sanity.png"):
-                    common.mouse_move_click(*common.scale_coordinates_1080p(200,200))
+                    common.mouse_move_click(*common.scale_coordinates_1080p(20, 1060))
                     common.sleep(1)
         common.key_press("p")
         if not shared_vars.good_pc_mode:
