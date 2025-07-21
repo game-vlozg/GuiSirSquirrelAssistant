@@ -92,7 +92,28 @@ class Updater:
         # Ensure directories exist
         os.makedirs(self.backup_path, exist_ok=True)
         os.makedirs(self.temp_path, exist_ok=True)
-        
+    
+    def _retry_file_operation(self, operation, operation_desc, max_retries=5, delay=0.5):
+        """
+        Retry a file operation with exponential backoff to handle file locks and permission issues
+        """
+        for attempt in range(max_retries):
+            try:
+                operation()
+                if attempt > 0:
+                    logger.info(f"Successfully {operation_desc} on attempt {attempt + 1}")
+                return True
+            except (OSError, IOError, PermissionError) as e:
+                error_type = type(e).__name__
+                if attempt == max_retries - 1:
+                    logger.error(f"RETRY FAILED: Unable to {operation_desc} after {max_retries} attempts. Final error: {error_type}: {e}")
+                    raise
+                else:
+                    wait_time = delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(f"RETRY {attempt + 1}/{max_retries}: {error_type} while trying to {operation_desc}: {e}")
+                    logger.info(f"Waiting {wait_time:.1f}s before retry...")
+                    time.sleep(wait_time)
+        return False
         
     def get_current_version(self):
         try:
@@ -467,12 +488,12 @@ class Updater:
                         logger.info(f"Skipping update to self: {file_rel_path}")
                         continue
                         
-                    # Remove existing file if any
+                    # Remove existing file if any with retry logic
                     if os.path.exists(dest_file):
-                        os.remove(dest_file)
+                        self._retry_file_operation(lambda: os.remove(dest_file), f"remove {dest_file}")
                     
-                    # Copy the file
-                    shutil.copy2(src_file, dest_file)
+                    # Copy the file with retry logic
+                    self._retry_file_operation(lambda: shutil.copy2(src_file, dest_file), f"copy {src_file} to {dest_file}")
                     file_count += 1
                     logger.debug(f"Updated file: {file_rel_path}")
                 except Exception as e:
@@ -941,7 +962,7 @@ except Exception as e:
             logger.info(f"Target: {target_dir}")
             
             # Brief delay to ensure original process has fully exited
-            time.sleep(1)
+            time.sleep(0.5)
             
             # Initialize updater with target directory as parent
             self.parent_dir = target_dir
@@ -960,10 +981,10 @@ except Exception as e:
             if temp_config_backup:
                 self.merge_configs_from_temp(temp_config_backup)
             
-            # Clean up temp directories
+            # Clean up temp directories with retry logic
             if temp_cleanup_dir and os.path.exists(temp_cleanup_dir):
                 try:
-                    shutil.rmtree(temp_cleanup_dir)
+                    self._retry_file_operation(lambda: shutil.rmtree(temp_cleanup_dir), f"remove temp directory {temp_cleanup_dir}")
                     logger.info(f"Cleaned up temp directory: {temp_cleanup_dir}")
                 except Exception as e:
                     logger.warning(f"Could not clean up temp directory: {e}")

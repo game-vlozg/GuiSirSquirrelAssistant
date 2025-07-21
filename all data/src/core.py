@@ -167,7 +167,7 @@ def battle():
                 common.mouse_down()
                 time.sleep(1)
                 if not common.element_exist("pictures/CustomAdded1080p/battle/battle_in_progress.png"):
-                    common.mouse_move_click(*common.scale_coordinates_1080p(20, 20))
+                    common.mouse_move_click(*common.scale_coordinates_1080p(20, 1060))
 
         else:
             if common.element_exist("pictures/mirror/general/encounter_reward.png"):
@@ -184,7 +184,7 @@ def battle():
                 winrate_invisible_start = None
                 logger.debug(f"No winrate for {winrate_invisible_timeout} seconds")
                 common.mouse_up()
-                common.mouse_move_click(*common.scale_coordinates_1080p(20, 20))
+                common.mouse_move_click(*common.scale_coordinates_1080p(20, 1060))
 
 def ego_check():
     """Check for bad clashes and use EGO skills to counter them"""
