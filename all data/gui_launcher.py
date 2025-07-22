@@ -515,6 +515,10 @@ battlepass_process = None
 extractor_process = None
 game_launcher_process = None
 
+# Toggle process completion tracking
+battlepass_completed = False
+extractor_completed = False
+
 # Lazy loading flags
 settings_tab_loaded = False
 logs_tab_loaded = False
@@ -1463,6 +1467,18 @@ def kill_function_runner():
     if 'function_terminate_button' in globals():
         function_terminate_button.configure(state="disabled")
 
+def kill_battlepass():
+    """Kill Battlepass Collector subprocess"""
+    global battlepass_process
+    if terminate_process(battlepass_process, "Battlepass Collector"):
+        battlepass_process = None
+
+def kill_extractor():
+    """Kill Extractor subprocess"""
+    global extractor_process
+    if terminate_process(extractor_process, "Extractor"):
+        extractor_process = None
+
 def start_automation_process(process_type, button_ref, process_ref_name):
     """Unified function to start automation processes"""
     global process, exp_process, threads_process
@@ -1628,6 +1644,11 @@ def start_chain_automation():
     current_chain_step = 0
     chain_start_button.configure(text="Stop Chain")
     
+    # Reset toggle completion flags
+    global battlepass_completed, extractor_completed
+    battlepass_completed = False
+    extractor_completed = False
+    
     chain_status_label.configure(text="Chain Status: Starting...")
     
     # Save current UI settings to config (like individual automations do)
@@ -1638,9 +1659,13 @@ def start_chain_automation():
 
 def stop_chain_automation():
     """Stop chain automation"""
-    global chain_running, battlepass_process, extractor_process
+    global chain_running, battlepass_process, extractor_process, battlepass_completed, extractor_completed
     
     chain_running = False
+    
+    # Reset completion flags when manually stopping
+    battlepass_completed = False
+    extractor_completed = False
     
     # Stop any currently running processes
     kill_bot()
@@ -1671,43 +1696,15 @@ def run_next_chain_step():
     global current_chain_step, chain_running
     
     if not chain_running or current_chain_step >= len(chain_queue):
-        # Chain completed or stopped
-        chain_running = False
-        chain_start_button.configure(text="Start Chain")
+        # Main chain completed or stopped, but keep chain_running=True if toggles will run
+        if not (collect_rewards_var.get() or extract_lunacy_var.get()):
+            # No toggles enabled, safe to mark chain as not running
+            chain_running = False
         
-        # Check if rewards collection is enabled
-        if collect_rewards_var.get():
-            chain_status_label.configure(text="Chain Status: Collecting rewards...")
-            try:
-                from src import battlepass_collector
-                global battlepass_process
-                battlepass_process = Process(target=battlepass_collector.main, daemon=True)
-                battlepass_process.start()
-                battlepass_process.join()  # Wait for completion
-                chain_status_label.configure(text="Chain Status: Rewards collected")
-            except Exception as e:
-                logging.error(f"Failed to collect rewards: {e}")
-                chain_status_label.configure(text="Chain Status: Reward collection failed")
-            finally:
-                battlepass_process = None
+        # Start toggle processes sequentially to avoid race conditions
+        start_next_toggle_process()
         
-        # Check if lunacy extraction is enabled
-        if extract_lunacy_var.get():
-            chain_status_label.configure(text="Chain Status: Extracting lunacy...")
-            try:
-                from src import extractor
-                global extractor_process
-                extractor_process = Process(target=extractor.main, daemon=True)
-                extractor_process.start()
-                extractor_process.join()  # Wait for completion
-                chain_status_label.configure(text="Chain Status: Completed (all tasks finished)")
-            except Exception as e:
-                logging.error(f"Failed to extract lunacy: {e}")
-                chain_status_label.configure(text="Chain Status: Completed (lunacy extraction failed)")
-            finally:
-                extractor_process = None
-        elif not collect_rewards_var.get() and not extract_lunacy_var.get():
-            chain_status_label.configure(text="Chain Status: Completed")
+        # Toggle process handling is now done in start_next_toggle_process()
         return
     
     # Get current step
@@ -1818,6 +1815,84 @@ def monitor_chain_step():
     else:
         # Still running, check again in 1 second
         root.after(1000, monitor_chain_step)
+
+def start_next_toggle_process():
+    """Start toggle processes sequentially to avoid race conditions"""
+    global battlepass_process, extractor_process, battlepass_completed, extractor_completed
+    
+    # Priority order: battlepass first, then extractor
+    if collect_rewards_var.get() and not battlepass_completed and (battlepass_process is None or not battlepass_process.is_alive()):
+        # Start battlepass collection
+        chain_status_label.configure(text="Chain Status: Collecting rewards...")
+        try:
+            from src import battlepass_collector
+            battlepass_process = Process(target=battlepass_collector.main, daemon=True)
+            battlepass_process.start()
+            # Start monitoring
+            root.after(1000, monitor_toggle_processes)
+            return
+        except Exception as e:
+            logging.error(f"Failed to collect rewards: {e}")
+            chain_status_label.configure(text="Chain Status: Reward collection failed")
+            battlepass_process = None
+    
+    # If battlepass is done or not enabled, try extractor
+    if extract_lunacy_var.get() and not extractor_completed and (extractor_process is None or not extractor_process.is_alive()):
+        # Start lunacy extraction
+        chain_status_label.configure(text="Chain Status: Extracting lunacy...")
+        try:
+            from src import extractor
+            extractor_process = Process(target=extractor.main, daemon=True)
+            extractor_process.start()
+            # Start monitoring
+            root.after(1000, monitor_toggle_processes)
+            return
+        except Exception as e:
+            logging.error(f"Failed to extract lunacy: {e}")
+            chain_status_label.configure(text="Chain Status: Completed (lunacy extraction failed)")
+            extractor_process = None
+    
+    # No toggle processes to start or all failed
+    if not (collect_rewards_var.get() or extract_lunacy_var.get()):
+        # No toggles enabled
+        chain_start_button.configure(text="Start Chain")
+        chain_status_label.configure(text="Chain Status: Completed")
+    else:
+        # All toggles completed or failed
+        global chain_running
+        chain_running = False
+        chain_start_button.configure(text="Start Chain")
+        chain_status_label.configure(text="Chain Status: Completed")
+
+def monitor_toggle_processes():
+    """Monitor battlepass and extractor processes for completion"""
+    global battlepass_process, extractor_process, battlepass_completed, extractor_completed
+    
+    battlepass_running = battlepass_process and battlepass_process.is_alive()
+    extractor_running = extractor_process and extractor_process.is_alive()
+    
+    # Clean up finished processes and try to start next one
+    process_finished = False
+    
+    if battlepass_process and not battlepass_process.is_alive():
+        battlepass_process = None
+        battlepass_completed = True
+        chain_status_label.configure(text="Chain Status: Rewards collected")
+        process_finished = True
+    
+    if extractor_process and not extractor_process.is_alive():
+        extractor_process = None
+        extractor_completed = True
+        process_finished = True
+    
+    if process_finished:
+        # A process finished, try to start the next one
+        start_next_toggle_process()
+        return
+    
+    # Still monitoring active processes
+    if battlepass_running or extractor_running:
+        root.after(1000, monitor_toggle_processes)
 
 # =====================================================================
 # FUNCTION RUNNER FUNCTIONS
@@ -4279,6 +4354,18 @@ def on_closing():
                 if threads_process.is_alive():
                     threads_process.kill()
                     threads_process.join(timeout=1)
+            if battlepass_process and battlepass_process.is_alive():
+                battlepass_process.terminate()
+                battlepass_process.join(timeout=2)
+                if battlepass_process.is_alive():
+                    battlepass_process.kill()
+                    battlepass_process.join(timeout=1)
+            if extractor_process and extractor_process.is_alive():
+                extractor_process.terminate()
+                extractor_process.join(timeout=2)
+                if extractor_process.is_alive():
+                    extractor_process.kill()
+                    extractor_process.join(timeout=1)
             
             # Kill subprocess processes with force
             if battle_process and battle_process.poll() is None:

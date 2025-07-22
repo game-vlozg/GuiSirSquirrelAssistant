@@ -66,6 +66,7 @@ def extract():
         common.mouse_move_click(*common.scale_coordinates_1080p(1000, 660))
         if time.time() > end_time:
             return
+        common.sleep(0.5)
         
     while common.click_matching("pictures/CustomAdded1080p/general/confirm.png", mousegoto200=True, recursive=False):
         pass

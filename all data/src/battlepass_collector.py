@@ -67,7 +67,7 @@ def main():
 
 def claim_missions():
     while True:
-        matches = common.ifexist_match("pictures/CustomAdded1080p/battlepass/notification.png", x1=common.scale_x_1080p(985), y1=common.scale_y_1080p(290), x2=common.scale_x_1080p(1050), y2=common.scale_y_1080p(850))
+        matches = common.ifexist_match("pictures/CustomAdded1080p/battlepass/notification.png", x1=common.scale_x_1080p(985), y1=common.scale_y_1080p(270), x2=common.scale_x_1080p(1050), y2=common.scale_y_1080p(850))
         if not matches:
             break
         for x, y in matches:
