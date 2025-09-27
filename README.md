@@ -1,4 +1,4 @@
-this is a fork of sirsquirrelassistant's macro but now with a gui + threads and exp automation + config + settings + a whole lotta shit!! (took deadass prob like 60 hours in total till now) clap plz, this will probably be updated time to time
+this is a fork of sirsquirrelassistant's macro but now with a gui + threads and exp automation + config + settings + a whole lotta shit!! (took deadass prob like 60 hours in total till now) clap plz, ~~this will probably be updatedtime to time~~ sorry gng im too busy, no updates :< for now.....
 
 [Join my Discord fr](https://discord.gg/vccsv4Q4ta)
 
@@ -65,3 +65,4 @@ alternatively you can download python from the microsoft store if the web python
 after that just run "run me if 1st time installed.bat" and let it download everything, once you see the "press any key to continue" message then you can close that window and run "Run macro.vbs" and it will launch the gui, from there everything is intuitive though i do have explainations in the "Help" section
 
 Enjoy and give me a star if you liked >:) keeps me motivated to see 100 stars on my repo (i have 12😭)
+
