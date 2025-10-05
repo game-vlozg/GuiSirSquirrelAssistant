@@ -1,6 +1,7 @@
-this is a fork of sirsquirrelassistant's macro but now with a gui + threads and exp automation + config + settings + a whole lotta shit!! (took deadass prob like 60 hours in total till now) clap plz, ~~this will probably be updatedtime to time~~ sorry gng im too busy, no updates :< for now.....
+NOTE: this is individual maintenance of GUI Sir Squirrel Assistant which previously maitained by [Kryxzort](https://github.com/Kryxzort) (kudo to him!). I want to fork this and provide my own version because their is a lot of spaghetti code inside this repo, which give a cooperate nerd like me a goosebumps. If everyone support, I'm happy to contribute back to the original repo (though, only in this year 2025 as I planed to drop this game afterward due to life).
+Here is Kryxzort' discord link: [Join my Discord fr](https://discord.gg/vccsv4Q4ta)
 
-[Join my Discord fr](https://discord.gg/vccsv4Q4ta)
+Any issue with this specific fork, please open issue 
 
 # Sir Squirrel Assistant
 
@@ -36,7 +37,25 @@ There are already other auto mirror dungeon tools out there so why should you us
 
 # Planned Features
 
-in the Todo-List channel of my [discord server](https://discord.gg/nNC6qNCfR7)
+Top priority
+- [ ] Add support for MDH
+- [ ] Add support for multiple different screen resolution
+- [ ] Add more stop break to allow breaking out of macro loop when something go wrong
+- [ ] Improve customizability
+  - [ ] Add toggle for each step in each workflow (e.g. toggle off enkhapalin conversion)
+  - [ ] Move all configurable from code to the file and allow customize via CLI/GUI for common things in future update (e.g. add support for new MD package)
+- [ ] Add support for both GUI and CLI version
+- [ ] Reduce code smell (I will do this will time to time)
+  - [ ] Remove redundant functions with no usage
+  - [ ] Add type hint and formatting
+  - [ ] Improve log redability
+
+Low priority (these are things I want, but on a whim and I don't know how to do and how long woulod it take, so it go there)
+- [ ] Improve performance/Reduce resource consumption
+- [ ] Improve documentation
+- [ ] Improve debug feature
+- [ ] Move to PyQT or PySide (official QT binding by QT themself)
+- [ ] Game played by chatGPT (hehe, just me being dillusioned)
 
 # Known Issues
 
