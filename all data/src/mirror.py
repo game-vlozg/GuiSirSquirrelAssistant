@@ -148,7 +148,7 @@ class Mirror:
         elif common.element_exist("pictures/CustomAdded1080p/general/squads/clear_selection.png"): #checks if in squad select and then proceeds with battle
             self.squad_select()
 
-        elif common.element_exist("pictures/mirror/restshop/shop.png"): #new combined shop and rest stop
+        elif common.element_exist("pictures/mirror/restshop/shop.png") or common.element_exist("pictures/mirror/restshop/super_shop.png") : #new combined shop and rest stop
             self.rest_shop()
 
         elif common.element_exist("pictures/mirror/general/ego_gift_get.png"): #handles the ego gift get
@@ -900,37 +900,50 @@ class Mirror:
                 status = mirror_utils.market_choice(self.status)
                 if status is None:
                     status = "pictures/mirror/restshop/market/poise_market.png"
-                for _ in range(3):
-                    market_gifts = []
-                    if common.element_exist(status):
-                        market_gifts += common.match_image(status)
-                    # keywordless gifts
-                    wordless_matches = common.ifexist_match("pictures/mirror/restshop/market/wordless.png")
-                    if wordless_matches:
-                        # Filters in the event of the skill replacement being detected
-                        wordless_gifts = [x for x in wordless_matches if not (abs(x[0] - common.scale_x(1300)) <= 10 and abs(x[1] - common.scale_y(541)) <= 10)] 
-                        market_gifts += wordless_gifts
-                    if len(market_gifts):
-                        market_gifts = [x for x in market_gifts if (x[0] > common.scale_x(1091) and x[0] < common.scale_x(2322)) and (x[1] > common.scale_y(434) and x[1] < common.scale_y(919))] # filter within purchase area
-                        for x,y in market_gifts:
-                            # x,y = i
-                            offset_x, offset_y = common.scale_offset_1440p(25, 1)
-                            if common.luminence(x + offset_x, y + offset_y) < 2: # this area will have a value of less than or equal to 5 if purchased
-                                continue
-                            if common.element_exist("pictures/mirror/restshop/small_not.png"):
-                                break
-                            common.mouse_move_click(x, y)
-                            common.click_matching("pictures/mirror/restshop/enhance/cancel.png", recursive=False)
-                            common.click_matching("pictures/mirror/restshop/market/purchase.png", recursive=False)
-                            common.click_matching("pictures/general/confirm_b.png", recursive=False)
+                for _ in range(2):  # Refresh at most 2 times, TODO: implement refresh based on available cost
+                    if common.click_matching("pictures/mirror/restshop/shop_scroll_up.png", recursive=False):  # Try to scroll up first, this usually happens when the shop is refreshed
+                        for _ in range(45): # Scroll up to the top
+                            common.mouse_scroll(1000)
+                    for _ in range(3): # Scroll at most 3 times, using for loop to carefully avoid infinite loop
+                        market_gifts = []
+                        if common.element_exist(status):
+                            market_gifts += common.match_image(status)
+                        # keywordless gifts
+                        wordless_matches = common.ifexist_match("pictures/mirror/restshop/market/wordless.png")
+                        if wordless_matches:
+                            # Filters in the event of the skill replacement being detected
+                            wordless_gifts = [x for x in wordless_matches if not (abs(x[0] - common.scale_x(1300)) <= 10 and abs(x[1] - common.scale_y(541)) <= 10)] 
+                            market_gifts += wordless_gifts
+                        if len(market_gifts):
+                            market_gifts = [x for x in market_gifts if (x[0] > common.scale_x(1091) and x[0] < common.scale_x(2322)) and (x[1] > common.scale_y(434) and x[1] < common.scale_y(919))] # filter within purchase area
+                            for x,y in market_gifts:
+                                # x,y = i
+                                offset_x, offset_y = common.scale_offset_1440p(25, 1)
+                                if common.luminence(x + offset_x, y + offset_y) < 2: # this area will have a value of less than or equal to 5 if purchased
+                                    continue
+                                if common.element_exist("pictures/mirror/restshop/small_not.png"):
+                                    break
+                                common.mouse_move_click(x, y)
+                                common.click_matching("pictures/mirror/restshop/enhance/cancel.png", recursive=False)
+                                common.click_matching("pictures/mirror/restshop/market/purchase.png", recursive=False)
+                                common.click_matching("pictures/general/confirm_b.png", recursive=False)
+                        
+                        # Handle scroll bar presence, usually in super shop
+                        common.sleep(1)
+                        if common.click_matching("pictures/mirror/restshop/shop_scroll_down.png", recursive=False):
+                            for _ in range(15):
+                                common.mouse_scroll(-1000) # TODO: this roll value vary between resolution, should fix this
+                        else:
+                            # scrollable = False
+                            break  # No more scroll bar, exit the loop
 
                     if common.element_exist("pictures/mirror/restshop/small_not.png"):
                         break
 
-                    if _ != 2:
-                        common.mouse_move_click(*common.scale_coordinates_1080p(50, 50))
-                        common.sleep(1)
-                        common.click_matching("pictures/mirror/restshop/market/refresh.png")
+                    common.mouse_move_click(*common.scale_coordinates_1080p(50, 50))
+                    common.sleep(1)
+                    common.click_matching("pictures/mirror/restshop/market/refresh.png")
+                    common.sleep(1)
 
         leave_restshop()
 
