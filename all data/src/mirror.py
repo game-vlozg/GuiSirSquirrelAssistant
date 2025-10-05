@@ -294,25 +294,33 @@ class Mirror:
             x,y = found[0]
         refresh_flag = common.luminence(x,y) < 70 
 
-        if self.exclusion_detection(floor) and not refresh_flag: #if pack exclusion detected and not refreshed
+        # check prioritized packs first
+        if shared_vars.prioritize_list_over_status and self.pack_list_has_matches(floor):
+            return self.pack_list(floor)
+        
+        #if pack exclusion detected and refresh used
+        # TODO: implement select with exclusion packs not selecting them, this approach is far from ideal
+        elif self.exclusion_detection(floor):
+            if not refresh_flag:
+                # Refresh available --> click it to avoid exclusion packs
+                common.click_matching("pictures/mirror/general/refresh.png", 0.9)
+                common.mouse_move(*common.scale_coordinates_1080p(200, 200))
+                return self.pack_selection()
+            elif refresh_flag:
+                return self.pack_list(floor)
+            
+        # Is prioritized and refresh not used --> try refresh to get desired packs
+        elif shared_vars.prioritize_list_over_status and not refresh_flag:
             common.click_matching("pictures/mirror/general/refresh.png", 0.9)
             common.mouse_move(*common.scale_coordinates_1080p(200, 200))
             return self.pack_selection()
 
-        elif self.exclusion_detection(floor) and refresh_flag:
-            return self.pack_list(floor)
-        
-        elif shared_vars.prioritize_list_over_status and not self.exclusion_detection(floor) and floor != "floor5":
-            if self.pack_list_has_matches(floor):
-                return self.pack_list(floor)
-            elif common.element_exist(status, 0.9):
-                return self.choose_pack(status)
-            else:
-                return self.pack_list(floor)
-
-        elif common.element_exist(status, 0.9) and not self.exclusion_detection(floor) and floor != "floor5":
+        # Only floor < 5 can have status packs
+        # TODO: add check and prioritize pack containing status gift not acquired
+        elif floor != "floor5" and common.element_exist(status, 0.9):
             return self.choose_pack(status)
 
+        # Default random pack selection
         else:
             return self.pack_list(floor)
 
@@ -372,16 +380,16 @@ class Mirror:
         found_packs = common.match_image("pictures/CustomAdded1080p/mirror/packs/inpack.png")
         min_y_scaled = common.scale_y_1080p(260)
         max_y_scaled = common.scale_y_1080p(800)
-        min_x_scaled = common.scale_x_1080p(315)
-        max_x_scaled = common.scale_x_1080p(1570)
+        min_x_scaled = common.scale_x_1080p(150)
+        max_x_scaled = common.scale_x_1080p(1730)
         filtered_packs = [pack for pack in found_packs if min_y_scaled <= pack[1] <= max_y_scaled and min_x_scaled <= pack[0] <= max_x_scaled]
         
         for found_pack in filtered_packs:
             x, y = found_pack
             x + -300
             y2 = y + 500
-            common.mouse_move(*common.scale_coordinates_1080p(x, y))
-            common.mouse_drag(*common.scale_coordinates_1080p(x, y2))
+            common.mouse_move(x, y)
+            common.mouse_drag(x, y2)
             return
 
     def choose_pack(self, pack_image, threshold=0.8):
@@ -389,9 +397,12 @@ class Mirror:
         found = common.match_image(pack_image, threshold)
         min_y_scaled = common.scale_y_1080p(260)
         max_y_scaled = common.scale_y_1080p(800)
-        min_x_scaled = common.scale_x_1080p(315)
-        max_x_scaled = common.scale_x_1080p(1570)
+        min_x_scaled = common.scale_x_1080p(150)
+        max_x_scaled = common.scale_x_1080p(1730)
+        self.logger.debug(f"Filter: {(min_x_scaled, min_y_scaled, max_x_scaled, max_y_scaled)}")
+        self.logger.debug(f"Found list: {found}")
         found = [x for x in found if min_y_scaled <= x[1] <= max_y_scaled and min_x_scaled <= x[0] <= max_x_scaled]
+        self.logger.debug(f"Found list after filtered: {found}")
         if pack_image == "pictures/mirror/packs/status/pierce_pack.png":
             found = [x for x in found if x[1] > common.scale_y(1092)] #Removes poor detections
         owned_found = common.ifexist_match("pictures/mirror/packs/status/owned.png", 0.9)
@@ -412,18 +423,16 @@ class Mirror:
             # Fallback: pick first available pack (same as line 375 approach)
             self.logger.warning(f"No {pack_image.split('/')[-1]} packs found, picking first available pack")
             found_packs = common.match_image("pictures/CustomAdded1080p/mirror/packs/inpack.png")
-            min_y_scaled = common.scale_y_1080p(260)
-            max_y_scaled = common.scale_y_1080p(800)
-            min_x_scaled = common.scale_x_1080p(315)
-            max_x_scaled = common.scale_x_1080p(1570)
+            self.logger.debug(f"Found list: {found_packs}")
             filtered_packs = [pack for pack in found_packs if min_y_scaled <= pack[1] <= max_y_scaled and min_x_scaled <= pack[0] <= max_x_scaled]
+            self.logger.debug(f"Found list after filtered: {filtered_packs}")
             
             for found_pack in filtered_packs:
                 x, y = found_pack
                 x + -300
                 y2 = y + 500
-                common.mouse_move(*common.scale_coordinates_1080p(x, y))
-                common.mouse_drag(*common.scale_coordinates_1080p(x, y2))
+                common.mouse_move(x, y)
+                common.mouse_drag(x, y2)
                 return
 
     def exclusion_detection(self, floor):
