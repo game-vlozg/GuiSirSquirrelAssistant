@@ -313,6 +313,16 @@ def battle_check():
         skill_check()
         return 0
 
+    elif common.click_matching("pictures/battle/arknight_mayors_begin.png", recursive=False):
+        logger.info("[Arknights] Mayors Battle Beginning")
+        common.wait_skip("pictures/events/continue.png")
+        return 0
+
+    elif common.click_matching("pictures/battle/arknight_mayors_2nd.png", recursive=False):
+        logger.info("[Arknights] Mayors Battle 2nd stage")
+        common.wait_skip("pictures/events/continue.png")
+        return 0
+
     return 1
 
 def skill_check():

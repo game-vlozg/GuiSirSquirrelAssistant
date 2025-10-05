@@ -487,7 +487,14 @@ class Mirror:
             self.squad_set = True
         # Click battle button
         common.mouse_move_click(*common.scale_coordinates_1080p(1722, 881))
-        while(not common.element_exist("pictures/battle/winrate.png")): #because squad select will always transition to battle
+        # Fuck PM, battle button now blocked by event prompt... Wait at most 10 sec or win rate button, or skip button detected to go ahead
+        for i in range(20):
+            if common.element_exist("pictures/battle/winrate.png"):
+                logger.debug("Premature break due to winrate detected.")
+                break
+            if common.element_exist("pictures/events/skip.png"):
+                logger.debug("Premature break due to event skip button detected")
+                break
             common.sleep(0.5)
         battle()
         check_loading()
