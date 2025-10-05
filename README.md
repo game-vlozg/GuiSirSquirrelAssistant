@@ -77,11 +77,16 @@ please follow the format in the pinned post
 
 # Instructions
 
-download [python](https://www.python.org/downloads/) make sure to click the big yellow button and not other versions since the big yellow is the only latest stable version.
-make sure to select the checkbox which says "add python to path"
-alternatively you can download python from the microsoft store if the web python has issues for you.
+1. Download and install `uv` (follow [this instruction](https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_2)). `uv` is a new and very popular Python package manager, which will handle version control, ensure you can run script without issue.
+2. Open Terminal (`cmd` or `Powershell`) and run `uv install` if this is the first time you clone this repo. Make sure your current directory is in `GuiSirSquirrelAssistant`, not `all data`.
+3. Run these scripts to start the GUI:
+```Powershell
+cd "all data"
+uv run gui_launcher.py
+```
+Note: why I remove all `.bat` script and `.vbs`? Well, running script without checking it yourself is a fucking bad practice from security POV and can get blocked by Windows Defense. So I want this instruction to be as transparent as possible. Please bear with it and get your hand dirty by start touching terminal. 
 
-after that just run "run me if 1st time installed.bat" and let it download everything, once you see the "press any key to continue" message then you can close that window and run "Run macro.vbs" and it will launch the gui, from there everything is intuitive though i do have explainations in the "Help" section
+From there everything is intuitive though i do have explainations in the "Help" section
 
 Enjoy and give me a star if you liked >:) keeps me motivated to see 100 stars on my repo (i have 12😭)
 
