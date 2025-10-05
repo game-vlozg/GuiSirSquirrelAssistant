@@ -26,6 +26,7 @@ REFERENCE_WIDTH_1440P = 2560
 REFERENCE_HEIGHT_1440P = 1440
 REFERENCE_WIDTH_1080P = 1920
 REFERENCE_HEIGHT_1080P = 1080
+REFERENCE_ASPECT_RATIO = 16/9
 
 
 # Monitor configuration - can be adjusted by user if needed
@@ -34,8 +35,11 @@ REFERENCE_HEIGHT_1080P = 1080
 CLEAN_LOGS_ENABLED = True
 
 # Actual monitor resolution (will be set during initialization)
-MONITOR_WIDTH = None
-MONITOR_HEIGHT = None
+MONITOR_WIDTH: int | None = None
+MONITOR_HEIGHT: int | None = None
+EXPECTED_WIDTH: int | None = None
+EXPECTED_HEIGHT: int | None = None
+IS_NON_STANDARD_RATIO: bool | None = None  # Whether current monitor size follow standard 16:9 ratio, e.g. 16:10
 
 # Determine if running as executable or script
 def get_base_path():
@@ -147,7 +151,7 @@ def initialize_async_logging():
 
 def detect_monitor_resolution():
     """Detect the actual resolution of the game monitor"""
-    global MONITOR_WIDTH, MONITOR_HEIGHT
+    global MONITOR_WIDTH, MONITOR_HEIGHT, IS_NON_STANDARD_RATIO, EXPECTED_WIDTH, EXPECTED_HEIGHT
     
     with mss() as sct:
         # Use monitor 1 as default if shared_vars.game_monitor doesn't exist yet
@@ -156,11 +160,21 @@ def detect_monitor_resolution():
         MONITOR_WIDTH = monitor['width']
         MONITOR_HEIGHT = monitor['height']
         
+        logger.info(f"Detected montior size: {MONITOR_WIDTH}x{MONITOR_HEIGHT}")
+
         # Calculate aspect ratio
         aspect_ratio = MONITOR_WIDTH / MONITOR_HEIGHT
-        
-        # Log the detected resolution
-        
+        IS_NON_STANDARD_RATIO = not(abs(aspect_ratio - REFERENCE_ASPECT_RATIO) < 0.0001)
+
+        EXPECTED_WIDTH = MONITOR_WIDTH
+        EXPECTED_HEIGHT = MONITOR_HEIGHT
+        if IS_NON_STANDARD_RATIO:
+            if aspect_ratio > REFERENCE_ASPECT_RATIO:
+                EXPECTED_WIDTH = round(MONITOR_HEIGHT * REFERENCE_ASPECT_RATIO)
+            else:
+                EXPECTED_HEIGHT = round(MONITOR_WIDTH / REFERENCE_ASPECT_RATIO)
+            logger.info(f"Non-standard monitor ratio detected (expect {EXPECTED_WIDTH}x{EXPECTED_HEIGHT} instead)")
+
         return MONITOR_WIDTH, MONITOR_HEIGHT
 
 # Initialize monitor resolution at module load time
@@ -793,21 +807,44 @@ def _scale_single_coordinate(coord, reference_dimension, actual_dimension, offse
 
 # ==================== PUBLIC SCALING FUNCTIONS (BACKWARD COMPATIBLE) ====================
 
-def scale_x(x):
-    """Scale X coordinate based on 1440p reference to the actual monitor width"""
-    return _scale_single_coordinate(x, REFERENCE_WIDTH_1440P, MONITOR_WIDTH, shared_vars.x_offset)
+def padding_none_16_9_monitor(x: int, y: int) -> tuple[int, int]:
+    """Correct X, Y coordinate when monitor doesn't follow 16:9 standard.
+    
+    This require setting resultion to 1920x1080 in the game manually.
+    """
+    if IS_NON_STANDARD_RATIO:
+        x_offset = (MONITOR_WIDTH - EXPECTED_WIDTH)//2
+        y_offset = (MONITOR_HEIGHT - EXPECTED_HEIGHT)//2
+        return x + x_offset, y + y_offset
+    return x, y
 
-def scale_y(y):
-    """Scale Y coordinate based on 1440p reference to the actual monitor height"""
-    return _scale_single_coordinate(y, REFERENCE_HEIGHT_1440P, MONITOR_HEIGHT, shared_vars.y_offset)
+def scale_x(x: int, *, padding: bool = True) -> int:
+    """Scale X coordinate based on 1440p reference to the actual monitor width."""
+    _x = _scale_single_coordinate(x, REFERENCE_WIDTH_1440P, EXPECTED_WIDTH, shared_vars.x_offset)
+    if padding:
+        _x, _ = padding_none_16_9_monitor(_x, 0)
+    return _x
 
-def scale_x_1080p(x):
-    """Scale X coordinate based on 1080p reference to the actual monitor width"""
-    return _scale_single_coordinate(x, REFERENCE_WIDTH_1080P, MONITOR_WIDTH, shared_vars.x_offset)
+def scale_y(y: int, *, padding: bool = True) -> int:
+    """Scale Y coordinate based on 1440p reference to the actual monitor height."""
+    _y = _scale_single_coordinate(y, REFERENCE_HEIGHT_1440P, EXPECTED_HEIGHT, shared_vars.y_offset)
+    if padding:
+        _, _y = padding_none_16_9_monitor(0, _y)
+    return _y
 
-def scale_y_1080p(y):
-    """Scale Y coordinate based on 1080p reference to the actual monitor height"""
-    return _scale_single_coordinate(y, REFERENCE_HEIGHT_1080P, MONITOR_HEIGHT, shared_vars.y_offset)
+def scale_x_1080p(x: int, *, padding: bool = True) -> int:
+    """Scale X coordinate based on 1080p reference to the actual monitor width."""
+    _x = _scale_single_coordinate(x, REFERENCE_WIDTH_1080P, EXPECTED_WIDTH, shared_vars.x_offset)
+    if padding:
+        _x, _ = padding_none_16_9_monitor(_x, 0)
+    return _x
+
+def scale_y_1080p(y: int, *, padding: bool = True) -> int:
+    """Scale Y coordinate based on 1080p reference to the actual monitor height."""
+    _y = _scale_single_coordinate(y, REFERENCE_HEIGHT_1080P, EXPECTED_HEIGHT, shared_vars.y_offset)
+    if padding:
+        _, _y = padding_none_16_9_monitor(0, _y)
+    return _y
 
 def uniform_scale_single(coord):
     """Scale a single coordinate using the minimum scale factor to maintain aspect ratio"""
@@ -831,6 +868,14 @@ def scale_coordinates_1440p(x, y):
 def scale_coordinates_1080p(x, y):
     """Scale (x, y) coordinates from 1080p reference to actual screen resolution"""
     return scale_x_1080p(x), scale_y_1080p(y)
+
+def scale_offset_1440p(x: int, y: int) -> tuple[int, int]:
+    """Scale (x, y) offset from 1440p reference to actual screen resolution. Will not perform non 16:9 screen padding."""
+    return scale_x(x, padding=False), scale_y(y, padding=False)
+
+def scale_offset_1080p(x: int, y: int) -> tuple[int, int]:
+    """Scale (x, y) offset from 1080p reference to actual screen resolution. Will not perform non 16:9 screen padding."""
+    return scale_x_1080p(x, padding=False), scale_y_1080p(y, padding=False)
 
 # ==================== GAME-SPECIFIC FUNCTIONS ====================
 

@@ -208,23 +208,20 @@ class Mirror:
         if not common.element_exist(gift,0.9): #Search for gift and if not present scroll to find it
             found = common.match_image("pictures/mirror/general/gift_select.png")
             x,y = found[0]
-            offset_x, offset_y = common.scale_coordinates_1440p(-1365, 50)
+            offset_x, offset_y = common.scale_offset_1440p(-1365, 50)
             common.mouse_move(x + offset_x, y + offset_y)
             for i in range(5):
                 common.mouse_scroll(-1000)
 
         found = common.match_image("pictures/mirror/general/gift_select.png")
         x,y = found[0]
-        _, offset_y = common.scale_coordinates_1440p(0, 235)
+        _, offset_y = common.scale_offset_1440p(0, 235)
         y = y + offset_y
-        if self.status == "sinking":
-            _, offset1 = common.scale_coordinates_1440p(0, 190)
-            _, offset2 = common.scale_coordinates_1440p(0, 380)
-            initial_gift_coords = [y+offset1, y+offset2, y]
-        else:
-            _, offset1 = common.scale_coordinates_1440p(0, 190)
-            _, offset2 = common.scale_coordinates_1440p(0, 380)
-            initial_gift_coords = [y, y+offset1, y+offset2]
+        _, offset1 = common.scale_offset_1440p(0, 190)
+        _, offset2 = common.scale_offset_1440p(0, 380)
+        gift_pos = [y, y+offset1, y+offset2]
+
+        initial_gift_coords = gift_pos if self.status != "sinking" else [*gift_pos[1:], gift_pos[0]]  # Deprioritize gift 0
 
         common.click_matching(gift,0.9) #click on specified
         for i in initial_gift_coords:
@@ -251,7 +248,7 @@ class Mirror:
         #This is to bring us to the first entry of teams
         found = common.match_image("pictures/CustomAdded1080p/general/squads/squad_select.png")
         x,y = found[0]
-        offset_x, offset_y = common.scale_coordinates_1440p(90, 90)
+        offset_x, offset_y = common.scale_offset_1440p(90, 90)
         common.mouse_move(x+offset_x,y+offset_y)
         if not common.click_matching(status, recursive=False):
             for i in range(30):
@@ -406,7 +403,7 @@ class Mirror:
                         found.remove(i)
         if found:
             x,y = common.random_choice(found)
-            _, offset_y = common.scale_coordinates_1440p(0, -350)
+            _, offset_y = common.scale_offset_1440p(0, -350)
             common.mouse_move(x, y + offset_y)
             common.mouse_drag(x,y)
             transition_loading()
@@ -600,7 +597,7 @@ class Mirror:
                 if found := common.match_image("pictures/mirror/general/danteh.png"):
                     x,y = found[0]
                     common.mouse_move(x,y)
-                    _, offset_y = common.scale_coordinates_1440p(0, 100)
+                    _, offset_y = common.scale_offset_1440p(0, 100)
                     common.mouse_drag(x, y + offset_y)
 
             combat_nodes = common.match_image("pictures/mirror/general/cost.png")
@@ -917,7 +914,7 @@ class Mirror:
                         market_gifts = [x for x in market_gifts if (x[0] > common.scale_x(1091) and x[0] < common.scale_x(2322)) and (x[1] > common.scale_y(434) and x[1] < common.scale_y(919))] # filter within purchase area
                         for x,y in market_gifts:
                             # x,y = i
-                            offset_x, offset_y = common.scale_coordinates_1440p(25, 1)
+                            offset_x, offset_y = common.scale_offset_1440p(25, 1)
                             if common.luminence(x + offset_x, y + offset_y) < 2: # this area will have a value of less than or equal to 5 if purchased
                                 continue
                             if common.element_exist("pictures/mirror/restshop/small_not.png"):
@@ -960,7 +957,7 @@ class Mirror:
             if gifts:
                 shift_x, shift_y = mirror_utils.enhance_shift(self.status) or (12, -41)
                 gifts = [i for i in gifts if i[0] > common.scale_x(1200)] #remove false positives on the left side
-                shift_x_scaled, shift_y_scaled = common.scale_coordinates_1440p(shift_x, shift_y)
+                shift_x_scaled, shift_y_scaled = common.scale_offset_1440p(shift_x, shift_y)
                 gifts = [i for i in gifts if common.luminence(i[0]+shift_x_scaled,i[1]+shift_y_scaled) > 21]
                 # Find all fully_upgraded coordinates once, then filter gifts using those coordinates
                 fully_upgraded_coords = common.ifexist_match("pictures/CustomAdded1080p/mirror/general/fully_upgraded.png", 0.7, x1=x1, y1=y1, x2=x2, y2=y2)
@@ -981,7 +978,7 @@ class Mirror:
             wordless_gifts = common.ifexist_match("pictures/mirror/restshop/enhance/wordless_enhance.png", x1=x1, y1=y1, x2=x2, y2=y2)
             if wordless_gifts:
                 shift_x, shift_y = mirror_utils.enhance_shift("wordless")
-                shift_x_scaled, shift_y_scaled = common.scale_coordinates_1440p(shift_x, shift_y)
+                shift_x_scaled, shift_y_scaled = common.scale_offset_1440p(shift_x, shift_y)
                 wordless_gifts = [i for i in wordless_gifts if common.luminence(i[0]+shift_x_scaled,i[1]+shift_y_scaled) > 22]
                 if len(wordless_gifts):
                     if not self.upgrade(wordless_gifts,"pictures/mirror/restshop/enhance/wordless_enhance.png",shift_x,shift_y):

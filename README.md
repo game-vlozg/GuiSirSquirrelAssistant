@@ -39,7 +39,7 @@ There are already other auto mirror dungeon tools out there so why should you us
 
 Top priority
 - [ ] Add support for MDH
-- [ ] Add support for multiple different screen resolution
+- [x] Add support for multiple different screen resolution
 - [ ] Add more stop break to allow breaking out of macro loop when something go wrong
 - [ ] Improve customizability
   - [ ] Add toggle for each step in each workflow (e.g. toggle off enkhapalin conversion)

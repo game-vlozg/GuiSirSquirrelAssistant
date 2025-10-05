@@ -171,7 +171,7 @@ def squad_select_lux(mirror_instance, SelectTeam=False):
             if not common.click_matching(status, recursive=False):
                 found = common.match_image("pictures/CustomAdded1080p/general/squads/squad_select.png")
                 x,y = found[0]
-                offset_x, offset_y = common.scale_coordinates_1440p(90, 90)
+                offset_x, offset_y = common.scale_offset_1440p(90, 90)
                 common.mouse_move(x + offset_x, y + offset_y)
                 for i in range(30):
                     common.mouse_scroll(1000)

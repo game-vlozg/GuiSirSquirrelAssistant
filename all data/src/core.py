@@ -211,7 +211,7 @@ def ego_check():
         bad_clashes = [x for x in bad_clashes if x[1] > common.scale_y(1023)]
         for x,y in bad_clashes:
             usable_ego = []
-            offset_x, offset_y = common.scale_coordinates_1440p(-55, 100)
+            offset_x, offset_y = common.scale_offset_1440p(-55, 100)
             common.mouse_move(x + offset_x, y + offset_y)
             common.mouse_hold()
             egos = common.match_image("pictures/battle/ego/sanity.png")
@@ -224,7 +224,7 @@ def ego_check():
                 x,y = ego
                 if common.element_exist("pictures/battle/ego/sanity.png"):
                     logger.info("Using EGO to counter bad clash")
-                    offset_x, offset_y = common.scale_coordinates_1440p(30, 30)
+                    offset_x, offset_y = common.scale_offset_1440p(30, 30)
                     common.mouse_move_click(x + offset_x, y + offset_y)
                     common.sleep(0.3)
                     common.mouse_click()
@@ -296,7 +296,7 @@ def battle_check():
         found = common.match_image("pictures/battle/offer_clay.png")
         if found:
             x,y = found[0]
-            _, offset_y = common.scale_coordinates_1440p(0, -72)
+            _, offset_y = common.scale_offset_1440p(0, -72)
             if common.luminence(x, y + offset_y) < 195:
                 common.click_matching("pictures/battle/offer_clay.png")
                 common.wait_skip("pictures/events/continue.png")
