@@ -51,12 +51,14 @@ omit = [
 [tool.pyright]
 include = ["src"]
 exclude = ["**/node_modules", "**/__pycache__"]
+venvPath = "."
+venv = ".venv"
 
 useLibraryCodeForTypes = true
 
 typeCheckingMode = "standard"
 
-pythonPlatform = "Linux"
+pythonPlatform = "Windows"
 pythonVersion = "3.13"
 
 reportMissingTypeStubs = "information"
