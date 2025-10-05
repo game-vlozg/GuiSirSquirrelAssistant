@@ -2477,12 +2477,13 @@ def load_mirror_settings():
     PACK_COLUMNS = [["floor1", "floor2"], ["floor3", "floor4"], ["floor5"]]
 
     # Define packs for each floor
+    # TODO: Move this to a separate config or data file
     FLOOR_PACKS = {
         "floor1": ["erosion", "factory", "forgotten", "gamblers", "nagel", "nest", "outcast", "unloving"],
         "floor2": ["cleaved", "crushed", "erosion", "factory", "gamblers", "hell", "lake", "nest", "pierced", "SEA", "unloving"],
         "floor3": ["cleaved", "craving", "crushed", "dregs", "flood", "flowers", "indolence", "judgment", "pierced", "repression", "seduction", "subservience", "unconfronting"],
-        "floor4": ["crawling", "envy", "fullstop", "gloom", "gluttony", "lust", "miracle", "noon", "pride", "sloth", "tearful", "time", "violet", "warp", "world", "wrath", "yield"],
-        "floor5": ["crawling", "crushers", "envy", "gloom", "gluttony", "lcb_check", "lust", "nocturnal", "piercers", "pride", "slicers", "sloth", "tearful", "time", "warp", "world", "wrath", "yield"]
+        "floor4": ["crawling", "envy", "fullstop", "gloom", "gluttony", "lust", "miracle", "noon", "pride", "sloth", "tearful", "time", "time_bokgak", "arknight", "spring_cultivation", "violet", "warp", "world", "wrath", "yield"],
+        "floor5": ["crawling", "crushers", "envy", "gloom", "gluttony", "lcb_check", "lust", "nocturnal", "piercers", "pride", "slicers", "sloth", "tearful", "time", "time_bokgak", "spring_cultivation", "warp", "world", "wrath", "yield"]
     }
 
     pack_container = ctk.CTkFrame(master_expand_frame)
