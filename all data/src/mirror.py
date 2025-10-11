@@ -270,7 +270,7 @@ class Mirror:
         while(not common.element_exist("pictures/CustomAdded1080p/mirror/general/grace_menu.png")):
             common.click_matching("pictures/CustomAdded1080p/general/confirm.png", recursive=False, mousegoto200=True)
 
-    def pack_selection(self):
+    def pack_selection(self) -> None:
         """Prioritises the status gifts for packs if not follows a list"""
         status = mirror_utils.pack_choice(self.status) or "pictures/mirror/packs/status/poise_pack.png"
         floor = self.floor_id()
@@ -288,192 +288,130 @@ class Mirror:
                 common.click_matching("pictures/mirror/packs/hard_toggle.png", threshold=0.9, recursive=False)
                 floor = self.floor_id()
 
-        common.mouse_move(*common.scale_coordinates_1080p(200,200))
-        common.sleep(2)
-        if found := common.match_image("pictures/mirror/general/refresh.png", 0.9):
-            x,y = found[0]
-        refresh_flag = common.luminence(x,y) < 70 
+        # Filter for coordinate in specific area, to avoid noise
+        min_y_scaled = common.scale_y_1080p(260)
+        max_y_scaled = common.scale_y_1080p(800)
+        min_x_scaled = common.scale_x_1080p(150)
+        max_x_scaled = common.scale_x_1080p(1730)
 
-        # check prioritized packs first
-        if shared_vars.prioritize_list_over_status and self.pack_list_has_matches(floor):
-            return self.pack_list(floor)
-        
-        #if pack exclusion detected and refresh used
-        # TODO: implement select with exclusion packs not selecting them, this approach is far from ideal
-        elif self.exclusion_detection(floor):
-            if not refresh_flag:
-                # Refresh available --> click it to avoid exclusion packs
-                common.click_matching("pictures/mirror/general/refresh.png", 0.9)
-                common.mouse_move(*common.scale_coordinates_1080p(200, 200))
-                return self.pack_selection()
-            elif refresh_flag:
-                return self.pack_list(floor)
-            
-        # Is prioritized and refresh not used --> try refresh to get desired packs
-        elif shared_vars.prioritize_list_over_status and not refresh_flag:
-            common.click_matching("pictures/mirror/general/refresh.png", 0.9)
-            common.mouse_move(*common.scale_coordinates_1080p(200, 200))
-            return self.pack_selection()
-
-        # Only floor < 5 can have status packs
-        # TODO: add check and prioritize pack containing status gift not acquired
-        elif floor != "floor5" and common.element_exist(status, 0.9):
-            return self.choose_pack(status)
-
-        # Default random pack selection
-        else:
-            return self.pack_list(floor)
-
-    def pack_list_has_matches(self, floor, threshold=0.9):
-        """Check if pack list has any matches without selecting them"""
-        try:
-            # Use cached configs instead of file I/O
-            priority_data = shared_vars.ConfigCache.get_config("pack_priority")
-            exceptions_data = shared_vars.ConfigCache.get_config("pack_exceptions")
-            
-            exceptions = exceptions_data.get(floor, [])
-            floor_priorities = priority_data.get(floor, {})
-            sorted_packs = sorted(floor_priorities.items(), key=lambda x: x[1])
-            packs = [pack for pack, _ in sorted_packs if pack not in exceptions]
-            
-            for pack in packs:
-                floor_num = floor[-1]
-                image_floor = f"f{floor_num}"
-                pack_image = f"pictures/mirror/packs/{image_floor}/{pack}.png"
-                if common.element_exist(pack_image, threshold):
-                    return True
-                    
-        except Exception as e:
-            self.logger.warning(f"Error checking pack list matches: {e}")
-        
-        return False
-
-    def pack_list(self, floor, threshold=0.9):
-        """Select packs based on priority files"""
         # Use cached configs instead of file I/O
-        try:
-            priority_data = shared_vars.ConfigCache.get_config("pack_priority")
-            exceptions_data = shared_vars.ConfigCache.get_config("pack_exceptions")
-            
-            exceptions = exceptions_data.get(floor, [])
-            floor_priorities = priority_data.get(floor, {})
-            
-            # Sort by priority (ascending)
-            sorted_packs = sorted(floor_priorities.items(), key=lambda x: x[1])
-            
-            # Remove exceptions
-            packs = [pack for pack, _ in sorted_packs if pack not in exceptions]
-            
-            # Try to find each pack in order
-            for pack in packs:
-                # Convert floor name format for image path (floor1 -> f1)
-                floor_num = floor[-1]
-                image_floor = f"f{floor_num}"
-                pack_image = f"pictures/mirror/packs/{image_floor}/{pack}.png"
-                if common.element_exist(pack_image, threshold):
-                    return self.choose_pack(pack_image, threshold)
-            
-        except Exception as e:
-            self.logger.warning(f"Error using pack priority files: {e}, picking first available")
-        
-        self.logger.warning(f"No packs found in priority system, picking first available")
-        found_packs = common.match_image("pictures/CustomAdded1080p/mirror/packs/inpack.png")
-        min_y_scaled = common.scale_y_1080p(260)
-        max_y_scaled = common.scale_y_1080p(800)
-        min_x_scaled = common.scale_x_1080p(150)
-        max_x_scaled = common.scale_x_1080p(1730)
-        filtered_packs = [pack for pack in found_packs if min_y_scaled <= pack[1] <= max_y_scaled and min_x_scaled <= pack[0] <= max_x_scaled]
-        
-        for found_pack in filtered_packs:
-            x, y = found_pack
-            x + -300
-            y2 = y + 500
-            common.mouse_move(x, y)
-            common.mouse_drag(x, y2)
-            return
+        floor_priorities = shared_vars.ConfigCache.get_config("pack_priority").get(floor, {})
+        exception_packs = shared_vars.ConfigCache.get_config("pack_exceptions").get(floor, [])
+        is_floor_without_priority = len(floor_priorities) == 0
 
-    def choose_pack(self, pack_image, threshold=0.8):
-        """Select and drag a specific pack"""
-        found = common.match_image(pack_image, threshold)
-        min_y_scaled = common.scale_y_1080p(260)
-        max_y_scaled = common.scale_y_1080p(800)
-        min_x_scaled = common.scale_x_1080p(150)
-        max_x_scaled = common.scale_x_1080p(1730)
-        self.logger.debug(f"Filter: {(min_x_scaled, min_y_scaled, max_x_scaled, max_y_scaled)}")
-        self.logger.debug(f"Found list: {found}")
-        found = [x for x in found if min_y_scaled <= x[1] <= max_y_scaled and min_x_scaled <= x[0] <= max_x_scaled]
-        self.logger.debug(f"Found list after filtered: {found}")
-        if pack_image == "pictures/mirror/packs/status/pierce_pack.png":
-            found = [x for x in found if x[1] > common.scale_y(1092)] #Removes poor detections
-        owned_found = common.ifexist_match("pictures/mirror/packs/status/owned.png", 0.9)
-        if owned_found:
-            owned_check = common.proximity_check(found,owned_found,common.scale_x_1080p(50))
-            if owned_check:
-                if len(found) > len(owned_check):
-                    for i in owned_check:
-                        found.remove(i)
-        if found:
-            x,y = common.random_choice(found)
-            _, offset_y = common.scale_offset_1440p(0, -350)
-            common.mouse_move(x, y + offset_y)
-            common.mouse_drag(x,y)
-            transition_loading()
-            return
-        else:
-            # Fallback: pick first available pack (same as line 375 approach)
-            self.logger.warning(f"No {pack_image.split('/')[-1]} packs found, picking first available pack")
-            found_packs = common.match_image("pictures/CustomAdded1080p/mirror/packs/inpack.png")
-            self.logger.debug(f"Found list: {found_packs}")
-            filtered_packs = [pack for pack in found_packs if min_y_scaled <= pack[1] <= max_y_scaled and min_x_scaled <= pack[0] <= max_x_scaled]
-            self.logger.debug(f"Found list after filtered: {filtered_packs}")
-            
-            for found_pack in filtered_packs:
-                x, y = found_pack
-                x + -300
-                y2 = y + 500
-                common.mouse_move(x, y)
-                common.mouse_drag(x, y2)
-                return
+        retry_attempt = 10
+        while retry_attempt > 0:
+            retry_attempt -= 1
+            common.mouse_move(*common.scale_coordinates_1080p(200,200))
+            common.sleep(2)
+            if found := common.match_image("pictures/mirror/general/refresh.png", 0.9):
+                x,y = found[0]
+            refresh_btn_available = common.luminence(x,y) >= 70
 
-    def exclusion_detection(self, floor):
-        """Detects an excluded pack using exception files"""
-        detected = 0
-        try:
-            # Try to load exceptions from JSON file
-            if os.path.exists(PACK_EXCEPTIONS_JSON):
-                with open(PACK_EXCEPTIONS_JSON, "r") as f:
-                    exceptions_data = json.load(f)
-                    exceptions = exceptions_data.get(floor, [])
-                
-                # Check if any exception packs are present
-                if exceptions:
-                    # Convert floor name format for image path (floor1 -> f1)
+            # Detect priority packs
+            selectable_priority_packs_pos = []
+            try:
+                priority_sorted_packs = sorted(floor_priorities.items(), key=lambda x: x[1])
+                selectable_packs = [pack for pack, _ in priority_sorted_packs if pack not in exception_packs]
+
+                for pack in selectable_packs:
                     floor_num = floor[-1]
                     image_floor = f"f{floor_num}"
-                    exclusion = [f"pictures/mirror/packs/{image_floor}/{pack}.png" for pack in exceptions]
-                    detected = any(common.element_exist(i, 0.9) for i in exclusion)
-                    return int(detected)
-        except Exception as e:
-            self.logger.warning(f"Error loading pack exceptions: {e}")
-        
-        # Try the old method as fallback
-        try:
-            floor_num = floor[-1]
-            exception_path = os.path.join(BASE_PATH, "config", f"pack_exceptions_f{floor_num}.txt")
-            if os.path.exists(exception_path):
-                with open(exception_path, "r") as f:
-                    exceptions = [line.strip() for line in f.readlines() if line.strip()]
-                
-                # Check if any exception packs are present
-                if exceptions:
-                    exclusion = [f"pictures/mirror/packs/f{floor_num}/{pack}.png" for pack in exceptions]
-                    detected = any(common.element_exist(i, 0.9) for i in exclusion)
-                    return int(detected)
-        except Exception as e:
-            self.logger.warning(f"Error loading old pack exceptions: {e}")
-        
-        # Return 0 if no exceptions file or empty file
-        return 0
+                    pack_image = f"pictures/mirror/packs/{image_floor}/{pack}.png"
+                    selectable_priority_packs_pos.extend(common.match_image(pack_image, 0.9))
+                selectable_priority_packs_pos = [pos for pos in selectable_priority_packs_pos if min_y_scaled <= pos[1] <= max_y_scaled and min_x_scaled <= pos[0] <= max_x_scaled]
+                logger.debug(f"Found {len(selectable_priority_packs_pos)} packs which prioritized: {selectable_priority_packs_pos}")
+
+                # Correct position for mouse click
+                _, offset_y = common.scale_offset_1440p(0, -350)
+                selectable_priority_packs_pos = [(pos[0], pos[1]+offset_y) for pos in selectable_priority_packs_pos]
+            except Exception as e:
+                self.logger.warning(f"Error checking pack list matches: {e}. False back to select whatever available.")
+
+            # Detect status pack
+            status_selectable_packs_pos = common.match_image(status, 0.9)
+            status_selectable_packs_pos = [pos for pos in status_selectable_packs_pos if min_y_scaled <= pos[1] <= max_y_scaled and min_x_scaled <= pos[0] <= max_x_scaled]
+            logger.debug(f"Found {len(status_selectable_packs_pos)} packs contain current status: {status_selectable_packs_pos}")
+
+            if status == "pictures/mirror/packs/status/pierce_pack.png":
+                status_selectable_packs_pos = [x for x in status_selectable_packs_pos if x[1] > common.scale_y(1092)]  # Removes poor detections
+
+            owned_gift_found = common.ifexist_match("pictures/mirror/packs/status/owned.png", 0.9)
+            if owned_gift_found:
+                pack_contain_owned_gift = common.proximity_check(status_selectable_packs_pos, owned_gift_found, common.scale_x_1080p(50))
+                if pack_contain_owned_gift:
+                    if len(status_selectable_packs_pos) <= len(pack_contain_owned_gift):
+                        logger.warning(f"Unexpected: status pack list (len {len(status_selectable_packs_pos)}) should be larger than number of pack list returned by proximity check (return {len(pack_contain_owned_gift)})")
+                    for i in pack_contain_owned_gift:
+                        status_selectable_packs_pos.remove(i)
+                        logger.debug(f"Remove pack {i} since it contain owned gift")
+
+            # Detect except packs
+            except_packs_pos = []
+            for pack in exception_packs:
+                floor_num = floor[-1]
+                image_floor = f"f{floor_num}"
+                pack_image = f"pictures/mirror/packs/{image_floor}/{pack}.png"
+                except_packs_pos.extend(common.match_image(pack_image, 0.9))
+            except_packs_pos = [pos for pos in except_packs_pos if min_y_scaled <= pos[1] <= max_y_scaled and min_x_scaled <= pos[0] <= max_x_scaled]
+            logger.debug(f"Found {len(except_packs_pos)} packs in exception list: {except_packs_pos}")
+
+            # Correct position for mouse click
+            _, offset_y = common.scale_offset_1440p(0, -350)
+            except_packs_pos = [(pos[0], pos[1]+offset_y) for pos in except_packs_pos]
+
+            # Detect selectable pack
+            selectable_packs_pos = common.match_image("pictures/CustomAdded1080p/mirror/packs/inpack.png")
+            selectable_packs_pos = [pos for pos in selectable_packs_pos if min_y_scaled <= pos[1] <= max_y_scaled and min_x_scaled <= pos[0] <= max_x_scaled]
+            logger.debug(f"Found {len(selectable_packs_pos)} packs in total: {selectable_packs_pos}")
+            for _pack in common.proximity_check(selectable_packs_pos, except_packs_pos, common.scale_x_1080p(150)):
+                selectable_packs_pos.remove(_pack)
+                logger.debug(f"Remove pack {_pack} since it is except pack")
+
+            # Correct position for mouse click
+            selectable_packs_pos = [(pos[0]-300, pos[1]+150) for pos in selectable_packs_pos]
+
+            # Check prioritized packs first, if found then select, if not and refresh available, then refresh
+            if shared_vars.prioritize_list_over_status and not is_floor_without_priority:
+                if len(selectable_priority_packs_pos) > 0:
+                    x, y = selectable_priority_packs_pos[0]
+                    common.mouse_move(x, y)
+                    common.mouse_drag(x, y + 350)
+                    return
+                elif refresh_btn_available:
+                    # Refresh available --> click it to look for desired priority pack
+                    common.click_matching("pictures/mirror/general/refresh.png", 0.9)
+                    common.mouse_move(*common.scale_coordinates_1080p(200, 200))
+                    continue
+
+            # Only floor < 5 can have status packs
+            if floor != "floor5":
+                if len(status_selectable_packs_pos) > 0:
+                    x, y = status_selectable_packs_pos[0]
+                    common.mouse_move(x, y)
+                    common.mouse_drag(x, y + 350)
+                    return
+                elif refresh_btn_available:
+                    # Refresh available --> click it to look for desired status pack
+                    common.click_matching("pictures/mirror/general/refresh.png", 0.9)
+                    common.mouse_move(*common.scale_coordinates_1080p(200, 200))
+                    continue
+
+            # Fallback: select whatever available
+            if len(status_selectable_packs_pos) > 0:
+                x, y = status_selectable_packs_pos[0]
+                common.mouse_move(x, y)
+                common.mouse_drag(x, y + 350)
+                return
+            else:
+                logger.info("No available option, have to choose from except pack")
+                x, y = except_packs_pos[0]
+                common.mouse_move(x, y)
+                common.mouse_drag(x, y + 350)
+                return
+
+        if retry_attempt == 0:
+            logger.error("Something went wrong, not fixable after 10 retries.")
 
     def squad_select(self):
         """selects sinners in squad order"""
