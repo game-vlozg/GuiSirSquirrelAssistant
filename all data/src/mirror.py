@@ -403,8 +403,15 @@ class Mirror:
                 common.mouse_move(x, y)
                 common.mouse_drag(x, y + 350)
                 return
+            elif len(selectable_packs_pos) > 0:
+                x, y = selectable_packs_pos[0]
+                common.mouse_move(x, y)
+                common.mouse_drag(x, y + 350)
+                return
             else:
                 logger.info("No available option, have to choose from except pack")
+                if len(except_packs_pos) == 0:
+                    raise ValueError("No exception pack to choose")
                 x, y = except_packs_pos[0]
                 common.mouse_move(x, y)
                 common.mouse_drag(x, y + 350)
