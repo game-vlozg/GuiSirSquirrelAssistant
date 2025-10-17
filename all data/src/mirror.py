@@ -328,24 +328,6 @@ class Mirror:
             except Exception as e:
                 self.logger.warning(f"Error checking pack list matches: {e}. False back to select whatever available.")
 
-            # Detect status pack
-            status_selectable_packs_pos = common.match_image(status, 0.9)
-            status_selectable_packs_pos = [pos for pos in status_selectable_packs_pos if min_y_scaled <= pos[1] <= max_y_scaled and min_x_scaled <= pos[0] <= max_x_scaled]
-            logger.debug(f"Found {len(status_selectable_packs_pos)} packs contain current status: {status_selectable_packs_pos}")
-
-            if status == "pictures/mirror/packs/status/pierce_pack.png":
-                status_selectable_packs_pos = [x for x in status_selectable_packs_pos if x[1] > common.scale_y(1092)]  # Removes poor detections
-
-            owned_gift_found = common.ifexist_match("pictures/mirror/packs/status/owned.png", 0.9)
-            if owned_gift_found:
-                pack_contain_owned_gift = common.proximity_check(status_selectable_packs_pos, owned_gift_found, common.scale_x_1080p(50))
-                if pack_contain_owned_gift:
-                    if len(status_selectable_packs_pos) <= len(pack_contain_owned_gift):
-                        logger.warning(f"Unexpected: status pack list (len {len(status_selectable_packs_pos)}) should be larger than number of pack list returned by proximity check (return {len(pack_contain_owned_gift)})")
-                    for i in pack_contain_owned_gift:
-                        status_selectable_packs_pos.remove(i)
-                        logger.debug(f"Remove pack {i} since it contain owned gift")
-
             # Detect except packs
             except_packs_pos = []
             for pack in exception_packs:
@@ -371,6 +353,26 @@ class Mirror:
             # Correct position for mouse click
             offset_x, offset_y = common.scale_offset_1440p(-100, 150)
             selectable_packs_pos = [(pos[0]+offset_x, pos[1]+offset_y) for pos in selectable_packs_pos]
+
+            # Detect status pack
+            status_gift_pos = common.match_image(status, 0.9)
+            if status == "pictures/mirror/packs/status/pierce_pack.png":
+                status_gift_pos = [x for x in status_gift_pos if x[1] > common.scale_y(1092)]  # Removes poor detections
+
+            owned_gift_pos = common.ifexist_match("pictures/mirror/packs/status/owned.png", 0.9)
+            if owned_gift_pos:
+                # Match owned tag to gift position
+                owned_gift_pos = common.proximity_check(status_gift_pos, owned_gift_pos, common.scale_x_1080p(50))
+                if owned_gift_pos:
+                    if len(status_gift_pos) <= len(owned_gift_pos):
+                        logger.warning(f"Unexpected: status pack list (len {len(status_gift_pos)}) should be larger than number of pack list returned by proximity check (return {len(owned_gift_pos)})")
+                    for i in owned_gift_pos:
+                        status_gift_pos.remove(i)
+                        logger.debug(f"Remove gift {i} since it's owned")
+
+            status_selectable_packs_pos = common.proximity_check(selectable_packs_pos, status_gift_pos, common.scale_x_1080p(432))
+            status_selectable_packs_pos = [pos for pos in status_selectable_packs_pos if min_y_scaled <= pos[1] <= max_y_scaled and min_x_scaled <= pos[0] <= max_x_scaled]
+            logger.debug(f"Found {len(status_selectable_packs_pos)} packs contain current status which haven't owned yet: {status_selectable_packs_pos}")
 
             # Check prioritized packs first, if found then select, if not and refresh available, then refresh
             if shared_vars.prioritize_list_over_status and not is_floor_without_priority:
