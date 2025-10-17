@@ -369,7 +369,8 @@ class Mirror:
                 logger.debug(f"Remove pack {_pack} since it is except pack")
 
             # Correct position for mouse click
-            selectable_packs_pos = [(pos[0]-300, pos[1]+150) for pos in selectable_packs_pos]
+            offset_x, offset_y = common.scale_offset_1440p(-100, 150)
+            selectable_packs_pos = [(pos[0]+offset_x, pos[1]+offset_y) for pos in selectable_packs_pos]
 
             # Check prioritized packs first, if found then select, if not and refresh available, then refresh
             if shared_vars.prioritize_list_over_status and not is_floor_without_priority:
