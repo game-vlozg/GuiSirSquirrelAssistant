@@ -735,11 +735,14 @@ class Mirror:
         statuses = ["burn","bleed","tremor","rupture","sinking","poise","charge","slash","pierce","blunt"] #List of status to use
         statuses.remove(self.status)
         common.click_matching("pictures/mirror/restshop/fusion/fuse.png")
-        duration = 1.5
-        end_time = time.time() + duration
+        start_time = time.time()
+        duration = 1.5  #  Duration to wait for fuse_menu to appear
         while not common.element_exist("pictures/mirror/restshop/fusion/fuse_menu.png"):
-            if time.time > end_time:
+            if time.time() > (start_time + duration):
+                logger.info(f"No fuse menu appear after {duration}s, assume failure due to insufficient number of gift.")
                 return
+            else:
+                time.sleep(0.1)
         status_picture = mirror_utils.get_fusion_target_button(self.status)
         common.mouse_move_click(*common.scale_coordinates_1440p(730, 700))
         time.sleep(0.5)
