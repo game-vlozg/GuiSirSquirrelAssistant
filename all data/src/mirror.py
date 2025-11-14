@@ -49,15 +49,16 @@ class Mirror:
     def floor_id():
         """Detect current floor number from pack selection screen"""
         floor = ""
-        if common.element_exist('pictures/mirror/packs/floor1.png', 0.9):
+        # Must detect with grayscale because text color is different between mode
+        if common.element_exist('pictures/mirror/packs/floor1.png', 0.9, grayscale=True):
             floor = "floor1"
-        elif common.element_exist('pictures/mirror/packs/floor2.png', 0.9):
+        elif common.element_exist('pictures/mirror/packs/floor2.png', 0.9, grayscale=True):
             floor = "floor2"
-        elif common.element_exist('pictures/mirror/packs/floor3.png', 0.9):
+        elif common.element_exist('pictures/mirror/packs/floor3.png', 0.9, grayscale=True):
             floor = "floor3"
-        elif common.element_exist('pictures/mirror/packs/floor4.png', 0.9):
+        elif common.element_exist('pictures/mirror/packs/floor4.png', 0.9, grayscale=True):
             floor = "floor4"
-        elif common.element_exist('pictures/mirror/packs/floor5.png', 0.9):
+        elif common.element_exist('pictures/mirror/packs/floor5.png', 0.9, grayscale=True):
             floor = "floor5"
         
         if floor:
