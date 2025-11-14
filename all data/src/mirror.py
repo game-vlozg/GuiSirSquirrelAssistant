@@ -5,6 +5,7 @@ import logging
 import json
 import time
 import common
+import copy
 import shared_vars
 import mirror_utils
 from core import (skill_check, battle_check, battle, check_loading, 
@@ -449,29 +450,70 @@ class Mirror:
         check_loading()
 
     def reward_select(self):
-        """Selecting EGO Gift rewards"""
+        """Selecting EGO Gift rewards, when randomly rewarded or rewarded at floor end."""
         status_effect = mirror_utils.reward_choice(self.status)
         if status_effect is None:
             status_effect = "pictures/mirror/rewards/poise_reward.png"
         ego_gift_matches = common.match_image("pictures/CustomAdded1080p/mirror/general/acquire_ego_gift_identifier.png")
-        ego_gift_count = len(ego_gift_matches)
-        
-        if ego_gift_count == 3:
-            found = common.match_image(status_effect,0.85)
-            if not found:
-                found = ego_gift_matches
-            # Filter rewards within specified boundaries
-            min_y_scaled = common.scale_y_1080p(225)
-            max_y_scaled = common.scale_y_1080p(845)
-            min_x_scaled = common.scale_x_1080p(360)
-            max_x_scaled = common.scale_x_1080p(1555)
-            filtered_rewards = [reward for reward in found if min_y_scaled <= reward[1] <= max_y_scaled and min_x_scaled <= reward[0] <= max_x_scaled]
-            if not filtered_rewards:
-                filtered_rewards = ego_gift_matches
-            x,y = common.random_choice(filtered_rewards)
+
+        # Filter owned ego gift
+        owned_ego_gift_matches = common.match_image("pictures/mirror/rewards/owned.png")
+        # Right shift to make "owned" pos closer to "acquire" (for proximity match)
+        for i in range(len(owned_ego_gift_matches)):
+            owned_ego_gift_matches[i] = (owned_ego_gift_matches[i][0]+common.scale_x(200), owned_ego_gift_matches[i][1])
+        # Remove owned gifts from the pool of ego_gift_matches so they won't be selectable later
+        selectable_ego_gift_matches = copy.deepcopy(ego_gift_matches)
+        if owned_ego_gift_matches:
+            owned_ego_gift_matches = common.proximity_check(ego_gift_matches, owned_ego_gift_matches, common.scale_x_1080p(150))
+            for pos in owned_ego_gift_matches:
+                selectable_ego_gift_matches.remove(pos)
+
+        found = common.match_image(status_effect,0.85)
+        if not found:
+            logger.info("No gift matching status found.")
+        # Filter rewards within specified boundaries
+        min_y_scaled = common.scale_y_1080p(225)
+        max_y_scaled = common.scale_y_1080p(845)
+        # Should not filter by X-axis to allow more gift in the future
+        # min_x_scaled = common.scale_x_1080p(360)
+        # max_x_scaled = common.scale_x_1080p(1555)
+        filtered_rewards = [reward for reward in found if min_y_scaled <= reward[1] <= max_y_scaled]
+        if owned_ego_gift_matches:
+            owned_filtered_rewards = common.proximity_check(filtered_rewards, owned_ego_gift_matches, common.scale_x_1080p(200))
+            for pos in owned_filtered_rewards:
+                filtered_rewards.remove(pos)
+
+        # Reward select at floor end can be selected more than 1
+        mounting_trials = common.match_image("pictures/mirror/general/ego_gift_mounting_trials.png", 0.9)
+        num_choice = 2 if shared_vars.hard_mode and len(mounting_trials) > 0 else 1
+
+        # TODO: choose gift with mounting trails consideration
+        for i in range(num_choice):
+            if len(filtered_rewards) > 0:
+                x,y = common.random_choice(filtered_rewards)
+                # Remove selected choice
+                filtered_rewards.remove((x, y))
+                selected_gift = common.proximity_check(selectable_ego_gift_matches, [(x, y)], common.scale_x_1080p(200))
+                for pos in selected_gift:
+                    selectable_ego_gift_matches.remove(pos)
+            if len(selectable_ego_gift_matches) > 0:
+                # Choose randomly from available gift
+                # TODO: choose gift based on rarity
+                x,y = common.random_choice(selectable_ego_gift_matches)
+                # Remove selected choice
+                selectable_ego_gift_matches.remove((x, y))
+            elif i == 0:
+                logger.info("Force select at least 1 ego gift.")
+                # Choose randomly from available gift
+                # TODO: choose gift based on rarity
+                x,y = common.random_choice(ego_gift_matches)
+                # Remove selected choice
+                ego_gift_matches.remove((x, y))
+            else:
+                logger.info("No good ego gift choice left, skip to select.")
+                break
             common.mouse_move_click(x, y)
-        else:
-            common.click_matching("pictures/CustomAdded1080p/mirror/general/acquire_ego_gift_identifier.png")
+
         common.key_press("enter")
         common.sleep(1)
         common.key_press("enter")
