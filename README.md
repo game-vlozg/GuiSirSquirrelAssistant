@@ -7,6 +7,9 @@ Any issue with this specific fork, please open issue
 
 Sir Squirrel Assistant is a helpful tool for the game Limbus Company by Project Moon. No longer will you need to hit the mines as Sir Squirrel will do it for you.
 
+## Important!
+- For non 16:9 ratio monitor, please go to Settings > Graphics > Choose resolution 1920x1080 
+
 # Features
 
 There are already other auto mirror dungeon tools out there so why should you use Sir Squirrel instead. Well here's why
